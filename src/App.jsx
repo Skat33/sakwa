@@ -184,6 +184,11 @@ function useMedia(query) {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
+html, body { scrollbar-width: none; -ms-overflow-style: none; }
+html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.sheet-body { scrollbar-width: none; }
+.sheet-body::-webkit-scrollbar { display: none; }
+button, .btn, .cat-tile, .tx-row, .nav-item { touch-action: manipulation; }
 .fin-root {
   font-family: 'Manrope', system-ui, sans-serif;
   min-height: 100vh; width: 100%;
@@ -282,7 +287,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 .bottom-nav button {
   background: none; border: none; color: var(--muted); font-family: inherit; cursor: pointer;
   display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 700;
-  padding: 6px 0; transition: color .15s ease;
+  padding: 8px 0; min-height: 48px; transition: color .15s ease;
+  touch-action: manipulation; -webkit-user-select: none; user-select: none;
 }
 .bottom-nav button.on { color: var(--accent); }
 .nav-plus {
@@ -3095,6 +3101,7 @@ export default function App() {
         await loadUserData(s.userId);
         setUserId(s.userId);
         setPhase("app");
+        requestAnimationFrame(() => window.scrollTo(0, 0));
       } else setPhase("auth");
     })();
   }, []); // eslint-disable-line
@@ -3132,6 +3139,7 @@ export default function App() {
     await store.set("fin:session", { userId: u.id });
     setView("dashboard"); setSettingsSub(null);
     setPhase("app");
+    requestAnimationFrame(() => window.scrollTo(0, 0));
   };
   const register = async (u) => {
     const next = [...users, u];
@@ -3143,6 +3151,7 @@ export default function App() {
     if (data && userId) await store.set(`fin:data:${userId}`, data);
     await store.del("fin:session");
     setUserId(null); setData(null); setPhase("auth");
+    requestAnimationFrame(() => window.scrollTo(0, 0));
   };
   const deleteAccount = async () => {
     await store.del(`fin:data:${userId}`);
