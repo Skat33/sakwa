@@ -208,6 +208,8 @@ button, .btn, .cat-tile, .tx-row, .nav-item, .seg button, input, select, textare
 }
 ${THEMES.map(themeBlock).join("\n")}
 .fin-vars { font-family: 'Manrope', system-ui, sans-serif; color: var(--text); font-size: 15px; }
+.desk-cols > *, .stat-grid > *, .tile-grid > * { min-width: 0; }
+.card { max-width: 100%; }
 .card {
   background: var(--surface); border: 1px solid var(--line);
   border-radius: 20px; box-shadow: var(--shadow);
@@ -291,7 +293,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 @media (min-width: 1024px) { .toast { bottom: 28px; } }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
-  .fin-root { height: 100vh; height: 100dvh; overflow: hidden; }
+  html, body { height: 100%; overflow: hidden; position: fixed; inset: 0; width: 100%; }
+  .fin-root { height: 100vh; height: 100dvh; min-height: 0 !important; overflow: hidden; }
   .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; scrollbar-width: none; }
   .app-scroll::-webkit-scrollbar { display: none; }
 }
@@ -303,6 +306,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   transform: translateZ(0); border-top: 1px solid var(--line);
   display: grid; grid-template-columns: repeat(5, 1fr); padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
+}
+.bottom-nav::after {
+  content: ""; position: absolute; top: 100%; left: 0; right: 0;
+  height: calc(var(--vv-off, 0px) + 2px); background: var(--bg);
 }
 .bottom-nav button {
   background: none; border: none; color: var(--muted); font-family: inherit; cursor: pointer;
@@ -745,7 +752,7 @@ function Donut({ slices, size = 150, centerLabel, centerValue }) {
           <div className="sens" style={{ fontSize: fit(centerValue, 15, 11, 10), fontWeight: 800 }}>{centerValue}</div>
         </div>
       </div>
-      <div style={{ flex: 1, minWidth: 160, display: "flex", flexDirection: "column", gap: 8 }}>
+      <div style={{ flex: 1, minWidth: 120, display: "flex", flexDirection: "column", gap: 8 }}>
         {slices.map((s) => (
           <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700 }}>
             <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color, flexShrink: 0 }} />
@@ -3302,7 +3309,9 @@ export default function App() {
     return (
       <div className="fin-root" data-theme="dark">
         <style>{CSS}</style>
-        <Auth users={users} onLogin={login} onRegister={register} />
+        <div className="app-scroll">
+          <Auth users={users} onLogin={login} onRegister={register} />
+        </div>
       </div>
     );
   }
