@@ -293,9 +293,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 @media (min-width: 1024px) { .toast { bottom: 28px; } }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
-  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
-  .fin-root { height: 100vh; height: 100dvh; min-height: 0 !important; overflow: hidden; }
-  .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; scrollbar-width: none; }
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; }
+  .fin-root { position: fixed; inset: 0; height: auto !important; min-height: 0 !important; width: auto; overflow: hidden; }
+  .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; scrollbar-width: none; touch-action: pan-y; }
   .app-scroll::-webkit-scrollbar { display: none; }
 }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
@@ -2515,6 +2515,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
       </div>
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
+        <br />Sakwa · kompilacja 14
       </p>
     </div>
   );
@@ -3130,15 +3131,11 @@ export default function App() {
     const t1 = setTimeout(upd, 250);
     const t2 = setTimeout(upd, 900);
     vv.addEventListener("resize", upd);
-    vv.addEventListener("scroll", upd);
-    window.addEventListener("scroll", upd, { passive: true });
     window.addEventListener("orientationchange", upd);
     return () => {
       clearTimeout(t1); clearTimeout(t2);
       if (raf) cancelAnimationFrame(raf);
       vv.removeEventListener("resize", upd);
-      vv.removeEventListener("scroll", upd);
-      window.removeEventListener("scroll", upd);
       window.removeEventListener("orientationchange", upd);
     };
   }, [phase, isDesktop]);
