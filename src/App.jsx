@@ -265,7 +265,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 @keyframes modalIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.95); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 .sheet-body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 6px 20px 22px; }
 .toast {
-  position: fixed; bottom: 92px; left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: calc(92px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   padding: 12px 16px; border-radius: 14px; z-index: 990; display: flex; align-items: center; gap: 14px;
   box-shadow: var(--shadow); animation: fadeIn .22s ease both; font-size: 14px; font-weight: 600;
@@ -277,7 +277,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
   background: color-mix(in srgb, var(--surface) 88%, transparent);
   backdrop-filter: blur(14px); border-top: 1px solid var(--line);
-  display: grid; grid-template-columns: repeat(5, 1fr); padding: 6px 8px calc(8px + env(safe-area-inset-bottom));
+  display: grid; grid-template-columns: repeat(5, 1fr); padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
 }
 .bottom-nav button {
   background: none; border: none; color: var(--muted); font-family: inherit; cursor: pointer;
@@ -344,7 +344,7 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .big-num { font-size: clamp(34px, 8vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
 .to-top {
-  position: fixed; right: 16px; bottom: 104px; z-index: 45;
+  position: fixed; right: 16px; bottom: calc(104px + env(safe-area-inset-bottom)); z-index: 45;
   width: 46px; height: 46px; border-radius: 16px;
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
@@ -2723,7 +2723,7 @@ function Auth({ users, onLogin, onRegister }) {
     else onLogin(users.find((x) => x.login === login.trim()));
   };
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: 20 }}>
+    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom))" }}>
       <div className="card fade-in" style={{ width: "min(420px, 100%)", padding: 28 }}>
         <div style={{ textAlign: "center", marginBottom: 22 }}>
           <div className="icon-badge" style={{ width: 58, height: 58, borderRadius: 20, background: "var(--accent-dim)", color: "var(--accent)", margin: "0 auto 12px" }}>
@@ -3058,6 +3058,29 @@ export default function App() {
   const confirm = useCallback((cfg, onYes) => { confirmCb.current = onYes; setConf(cfg); }, []);
   const confirmDone = (yes) => { setConf(null); if (yes && confirmCb.current) confirmCb.current(); confirmCb.current = null; };
 
+  /* iOS: enable safe-area insets + tint the status bar to match the theme */
+  useEffect(() => {
+    let meta = document.querySelector('meta[name="viewport"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.setAttribute("name", "viewport");
+      document.head.appendChild(meta);
+    }
+    const content = meta.getAttribute("content") || "width=device-width, initial-scale=1";
+    if (!/viewport-fit=cover/.test(content)) meta.setAttribute("content", content + ", viewport-fit=cover");
+  }, []);
+  useEffect(() => {
+    const t = THEMES.find((x) => x.id === (data?.settings?.theme)) || THEMES[0];
+    let meta = document.querySelector('meta[name="theme-color"]');
+    if (!meta) {
+      meta = document.createElement("meta");
+      meta.setAttribute("name", "theme-color");
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute("content", t.bg);
+    document.body.style.background = t.bg;
+  }, [data?.settings?.theme]);
+
   /* boot: load users + session */
   useEffect(() => {
     (async () => {
@@ -3257,7 +3280,7 @@ export default function App() {
             )}
           </aside>
         )}
-        <main style={{ flex: 1, minWidth: 0, maxWidth: 1100, margin: "0 auto", padding: isDesktop ? "28px 32px 40px" : "20px 16px 110px" }}>
+        <main style={{ flex: 1, minWidth: 0, maxWidth: 1100, margin: "0 auto", padding: isDesktop ? "28px 32px 40px" : "calc(16px + env(safe-area-inset-top)) 16px calc(114px + env(safe-area-inset-bottom))" }}>
           {content}
         </main>
       </div>
