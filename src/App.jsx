@@ -293,7 +293,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 @media (min-width: 1024px) { .toast { bottom: 28px; } }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
-  html, body { height: 100%; overflow: hidden; position: fixed; inset: 0; width: 100%; }
+  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; }
   .fin-root { height: 100vh; height: 100dvh; min-height: 0 !important; overflow: hidden; }
   .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; scrollbar-width: none; }
   .app-scroll::-webkit-scrollbar { display: none; }
@@ -301,7 +301,6 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
 .bottom-nav {
   position: fixed; bottom: var(--vv-off, 0px); left: 0; right: 0; z-index: 40;
-  transition: bottom .22s ease;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   transform: translateZ(0); border-top: 1px solid var(--line);
@@ -3119,10 +3118,12 @@ export default function App() {
         const visualBottom = vv.offsetTop + vv.height;
         const rect = nav.getBoundingClientRect();
         const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--vv-off")) || 0;
+        const ae = document.activeElement;
+        if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return; // keyboard session — hold position
         let next = cur + Math.round(rect.bottom - visualBottom);
         next = Math.max(0, next);
-        if (next > 170) next = 0; // keyboard open — don't lift the nav onto it
-        if (Math.abs(next - cur) > 1) document.documentElement.style.setProperty("--vv-off", next + "px");
+        if (next > 170) next = 0;
+        if (Math.abs(next - cur) > 2) document.documentElement.style.setProperty("--vv-off", next + "px");
       });
     };
     upd();
@@ -3141,6 +3142,26 @@ export default function App() {
       window.removeEventListener("orientationchange", upd);
     };
   }, [phase, isDesktop]);
+
+  /* iOS: after the keyboard closes, Safari can leave the visual viewport shifted —
+     snap it back so pages always start exactly at the top */
+  useEffect(() => {
+    const isField = (el) => el && /^(INPUT|TEXTAREA|SELECT)$/.test(el.tagName);
+    const reset = () => {
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+    };
+    const onFocusOut = () => setTimeout(() => { if (!isField(document.activeElement)) reset(); }, 80);
+    window.addEventListener("focusout", onFocusOut);
+    const vv = window.visualViewport;
+    const onVV = () => { if (vv && vv.offsetTop > 0 && !isField(document.activeElement)) reset(); };
+    if (vv) vv.addEventListener("resize", onVV);
+    return () => {
+      window.removeEventListener("focusout", onFocusOut);
+      if (vv) vv.removeEventListener("resize", onVV);
+    };
+  }, []);
 
   /* iOS: enable safe-area insets + tint the status bar to match the theme */
   useEffect(() => {
