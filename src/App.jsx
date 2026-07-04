@@ -184,14 +184,14 @@ function useMedia(query) {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-html, body { scrollbar-width: none; -ms-overflow-style: none; }
+html, body { scrollbar-width: none; -ms-overflow-style: none; overflow-x: hidden; width: 100%; overscroll-behavior-x: none; max-width: 100vw; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .sheet-body { scrollbar-width: none; }
 .sheet-body::-webkit-scrollbar { display: none; }
 button, .btn, .cat-tile, .tx-row, .nav-item { touch-action: manipulation; }
 .fin-root {
   font-family: 'Manrope', system-ui, sans-serif;
-  min-height: 100vh; min-height: 100dvh; width: 100%;
+  min-height: 100vh; min-height: 100dvh; width: 100%; max-width: 100vw; overflow-x: clip;
   background: var(--bg); color: var(--text);
   transition: background .3s ease, color .3s ease;
   font-size: 15px;
@@ -272,7 +272,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 @keyframes modalIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.95); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
 .sheet-body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 6px 20px 22px; }
 .toast {
-  position: fixed; bottom: calc(92px + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: calc(88px + var(--vv-off, 0px) + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   padding: 12px 16px; border-radius: 14px; z-index: 990; display: flex; align-items: center; gap: 14px;
   box-shadow: var(--shadow); animation: fadeIn .22s ease both; font-size: 14px; font-weight: 600;
@@ -281,7 +281,8 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 @media (min-width: 1024px) { .toast { bottom: 28px; } }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 .bottom-nav {
-  position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
+  position: fixed; bottom: var(--vv-off, 0px); left: 0; right: 0; z-index: 40;
+  transition: bottom .18s ease;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   transform: translateZ(0); border-top: 1px solid var(--line);
@@ -354,7 +355,7 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .big-num { font-size: clamp(34px, 8vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
 .to-top {
-  position: fixed; right: 16px; bottom: calc(104px + env(safe-area-inset-bottom)); z-index: 45;
+  position: fixed; right: 16px; bottom: calc(96px + var(--vv-off, 0px) + env(safe-area-inset-bottom)); z-index: 45;
   width: 46px; height: 46px; border-radius: 16px;
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
@@ -3072,6 +3073,26 @@ export default function App() {
   const confirmCb = useRef(null);
   const confirm = useCallback((cfg, onYes) => { confirmCb.current = onYes; setConf(cfg); }, []);
   const confirmDone = (yes) => { setConf(null); if (yes && confirmCb.current) confirmCb.current(); confirmCb.current = null; };
+
+  /* iOS Safari: keep bottom UI above the floating address bar (VisualViewport tracking) */
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const upd = () => {
+      let off = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      if (off > 170) off = 0; // keyboard open — don't lift the nav onto it
+      document.documentElement.style.setProperty("--vv-off", off + "px");
+    };
+    upd();
+    vv.addEventListener("resize", upd);
+    vv.addEventListener("scroll", upd);
+    window.addEventListener("orientationchange", upd);
+    return () => {
+      vv.removeEventListener("resize", upd);
+      vv.removeEventListener("scroll", upd);
+      window.removeEventListener("orientationchange", upd);
+    };
+  }, []);
 
   /* iOS: enable safe-area insets + tint the status bar to match the theme */
   useEffect(() => {
