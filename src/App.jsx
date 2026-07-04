@@ -184,11 +184,14 @@ function useMedia(query) {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-html, body { scrollbar-width: none; -ms-overflow-style: none; overflow-x: hidden; width: 100%; overscroll-behavior-x: none; max-width: 100vw; }
+html, body { scrollbar-width: none; -ms-overflow-style: none; overflow-x: hidden; width: 100%; overscroll-behavior-x: none; max-width: 100vw; touch-action: pan-y pinch-zoom; position: relative; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .sheet-body { scrollbar-width: none; }
 .sheet-body::-webkit-scrollbar { display: none; }
-button, .btn, .cat-tile, .tx-row, .nav-item { touch-action: manipulation; }
+button, .btn, .cat-tile, .tx-row, .nav-item, .seg button, input, select, textarea, label { touch-action: pan-y; }
+.scroll-x, .scroll-x * { touch-action: pan-x pan-y; }
+.seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+.seg::-webkit-scrollbar { display: none; }
 .fin-root {
   font-family: 'Manrope', system-ui, sans-serif;
   min-height: 100vh; min-height: 100dvh; width: 100%; max-width: 100vw; overflow-x: clip;
@@ -3074,25 +3077,45 @@ export default function App() {
   const confirm = useCallback((cfg, onYes) => { confirmCb.current = onYes; setConf(cfg); }, []);
   const confirmDone = (yes) => { setConf(null); if (yes && confirmCb.current) confirmCb.current(); confirmCb.current = null; };
 
-  /* iOS Safari: keep bottom UI above the floating address bar (VisualViewport tracking) */
+  /* iOS Safari: keep bottom UI above the floating address bar.
+     Instead of guessing from viewport math, measure the nav's real position vs the
+     visible viewport bottom and lift it by exactly the covered amount (self-correcting). */
+  const navRef = useRef(null);
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
+    let raf = null;
     const upd = () => {
-      let off = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
-      if (off > 170) off = 0; // keyboard open — don't lift the nav onto it
-      document.documentElement.style.setProperty("--vv-off", off + "px");
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = null;
+        const nav = navRef.current;
+        if (!nav) { document.documentElement.style.setProperty("--vv-off", "0px"); return; }
+        const visualBottom = vv.offsetTop + vv.height;
+        const rect = nav.getBoundingClientRect();
+        const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--vv-off")) || 0;
+        let next = cur + Math.round(rect.bottom - visualBottom);
+        next = Math.max(0, next);
+        if (next > 170) next = 0; // keyboard open — don't lift the nav onto it
+        if (Math.abs(next - cur) > 1) document.documentElement.style.setProperty("--vv-off", next + "px");
+      });
     };
     upd();
+    const t1 = setTimeout(upd, 250);
+    const t2 = setTimeout(upd, 900);
     vv.addEventListener("resize", upd);
     vv.addEventListener("scroll", upd);
+    window.addEventListener("scroll", upd, { passive: true });
     window.addEventListener("orientationchange", upd);
     return () => {
+      clearTimeout(t1); clearTimeout(t2);
+      if (raf) cancelAnimationFrame(raf);
       vv.removeEventListener("resize", upd);
       vv.removeEventListener("scroll", upd);
+      window.removeEventListener("scroll", upd);
       window.removeEventListener("orientationchange", upd);
     };
-  }, []);
+  }, [phase, isDesktop]);
 
   /* iOS: enable safe-area insets + tint the status bar to match the theme */
   useEffect(() => {
@@ -3171,7 +3194,11 @@ export default function App() {
     setPhase("app");
     requestAnimationFrame(() => {
       window.scrollTo(0, 0);
-      setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
+      setTimeout(() => {
+        window.scrollTo(0, 2);
+        window.scrollTo(0, 0);
+        window.dispatchEvent(new Event("resize"));
+      }, 120);
     });
   };
   const register = async (u) => {
@@ -3328,7 +3355,7 @@ export default function App() {
       </div>
 
       {!isDesktop && (
-        <nav className="bottom-nav no-print">
+        <nav className="bottom-nav no-print" ref={navRef}>
           {mobileTabs.map((t) => {
             if (t.id === "__add") return (
               <button key="__add" onClick={() => setQuickAdd(true)} aria-label="Dodaj">
