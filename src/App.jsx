@@ -191,7 +191,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 button, .btn, .cat-tile, .tx-row, .nav-item { touch-action: manipulation; }
 .fin-root {
   font-family: 'Manrope', system-ui, sans-serif;
-  min-height: 100vh; width: 100%;
+  min-height: 100vh; min-height: 100dvh; width: 100%;
   background: var(--bg); color: var(--text);
   transition: background .3s ease, color .3s ease;
   font-size: 15px;
@@ -232,6 +232,8 @@ input[type="date"] { cursor: pointer; }
 input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 .amt-pill { display: inline-block; padding: 5px 11px; border-radius: 11px; font-weight: 800; font-size: 13.5px; letter-spacing: -0.01em; white-space: nowrap; }
 .hero-num-grad { background: linear-gradient(100deg, var(--info), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.skeleton { background: var(--surface2); border-radius: 14px; animation: pulse 1.1s ease-in-out infinite; }
+@keyframes pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 .sens { transition: filter .3s ease; }
 .incognito .sens { filter: blur(9px); pointer-events: none; user-select: none; }
 .tx-list > * + * { border-top: 1px solid var(--line); }
@@ -280,8 +282,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 .bottom-nav {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 40;
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  backdrop-filter: blur(14px); border-top: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  transform: translateZ(0); border-top: 1px solid var(--line);
   display: grid; grid-template-columns: repeat(5, 1fr); padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
 }
 .bottom-nav button {
@@ -342,6 +345,7 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
   backdrop-filter: blur(12px); padding-bottom: 10px;
 }
 h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+.auth-wrap { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); }
 .hero-balance {
   position: relative; overflow: hidden; padding: 26px 24px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow);
@@ -712,7 +716,7 @@ function Donut({ slices, size = 150, centerLabel, centerValue }) {
           <PieChart>
             <Pie data={slices.length ? slices : [{ name: "brak", value: 1 }]} dataKey="value"
               innerRadius="68%" outerRadius="100%" paddingAngle={slices.length > 1 ? 3 : 0}
-              startAngle={90} endAngle={-270} stroke="none" isAnimationActive>
+              startAngle={90} endAngle={-270} stroke="none" isAnimationActive={false}>
               {(slices.length ? slices : [{ color: "var(--surface3)" }]).map((s, i) => (
                 <Cell key={i} fill={s.color || "var(--surface3)"} />
               ))}
@@ -1195,6 +1199,11 @@ function Stats({ data, helpers, go, onGenerateReport, update }) {
   const { toMain, main } = helpers;
   const [preset, setPreset] = useState("m");
   const [custom, setCustom] = useState({ from: `${todayISO().slice(0, 7)}-01`, to: todayISO() });
+  const [chartsReady, setChartsReady] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setChartsReady(true), 30);
+    return () => clearTimeout(t);
+  }, []);
   const range = rangeFromPreset(preset, custom);
   const txs = data.transactions.filter((t) => t.date >= range.from && t.date <= range.to);
 
@@ -1237,7 +1246,7 @@ function Stats({ data, helpers, go, onGenerateReport, update }) {
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div className="card" style={{ padding: 18 }}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Przychody i wydatki miesięcznie</div>
-            {monthly.length === 0 ? <p style={{ color: "var(--muted)", fontWeight: 600 }}>Brak danych w tym zakresie.</p> : (
+            {monthly.length === 0 ? <p style={{ color: "var(--muted)", fontWeight: 600 }}>Brak danych w tym zakresie.</p> : !chartsReady ? <div className="skeleton" style={{ height: 230 }} /> : (
               <div style={{ width: "100%", height: 230 }}>
                 <ResponsiveContainer>
                   <BarChart data={monthly} barGap={3}>
@@ -1245,8 +1254,8 @@ function Stats({ data, helpers, go, onGenerateReport, update }) {
                     <XAxis dataKey="label" tick={{ fill: "var(--muted)", fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fill: "var(--muted)", fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} width={44} />
                     <RTooltip contentStyle={tooltipStyle} cursor={{ fill: "var(--surface2)" }} formatter={(v) => fmtMoney(v, main, true)} />
-                    <Bar dataKey="Przychody" fill="var(--accent)" radius={[6, 6, 0, 0]} maxBarSize={26} />
-                    <Bar dataKey="Wydatki" fill="var(--neg)" radius={[6, 6, 0, 0]} maxBarSize={26} />
+                    <Bar dataKey="Przychody" fill="var(--accent)" radius={[6, 6, 0, 0]} maxBarSize={26} isAnimationActive={false} />
+                    <Bar dataKey="Wydatki" fill="var(--neg)" radius={[6, 6, 0, 0]} maxBarSize={26} isAnimationActive={false} />
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -1254,7 +1263,7 @@ function Stats({ data, helpers, go, onGenerateReport, update }) {
           </div>
           <div className="card" style={{ padding: 18 }}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Saldo narastająco</div>
-            {cumulative.length === 0 ? <p style={{ color: "var(--muted)", fontWeight: 600 }}>Brak danych w tym zakresie.</p> : (
+            {cumulative.length === 0 ? <p style={{ color: "var(--muted)", fontWeight: 600 }}>Brak danych w tym zakresie.</p> : !chartsReady ? <div className="skeleton" style={{ height: 210 }} /> : (
               <div style={{ width: "100%", height: 210 }}>
                 <ResponsiveContainer>
                   <AreaChart data={cumulative}>
@@ -1268,7 +1277,7 @@ function Stats({ data, helpers, go, onGenerateReport, update }) {
                     <XAxis dataKey="date" tick={{ fill: "var(--muted)", fontSize: 10.5, fontWeight: 700 }} axisLine={false} tickLine={false} minTickGap={40} />
                     <YAxis tick={{ fill: "var(--muted)", fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} width={48} />
                     <RTooltip contentStyle={tooltipStyle} formatter={(v) => fmtMoney(v, main, true)} labelFormatter={fmtDate} />
-                    <Area type="monotone" dataKey="Saldo" stroke="var(--info)" strokeWidth={2.5} fill="url(#gradSaldo)" />
+                    <Area type="monotone" dataKey="Saldo" stroke="var(--info)" strokeWidth={2.5} fill="url(#gradSaldo)" isAnimationActive={false} />
                   </AreaChart>
                 </ResponsiveContainer>
               </div>
@@ -1276,13 +1285,13 @@ function Stats({ data, helpers, go, onGenerateReport, update }) {
           </div>
           <div className="card" style={{ padding: 18 }}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Heatmapa wydatków <span style={{ color: "var(--muted)", fontSize: 13, fontWeight: 700 }}>· {MONTHS_FULL[Number(range.to.slice(5, 7)) - 1].toLowerCase()} {range.to.slice(0, 4)}</span></div>
-            <Heatmap txs={data.transactions} toMain={toMain} monthISO={range.to.slice(0, 7)} main={main} />
+            {chartsReady ? <Heatmap txs={data.transactions} toMain={toMain} monthISO={range.to.slice(0, 7)} main={main} /> : <div className="skeleton" style={{ height: 250 }} />}
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div className="card" style={{ padding: 18 }}>
             <div style={{ fontWeight: 800, marginBottom: 12 }}>Wydatki wg kategorii</div>
-            <Donut slices={slices} centerLabel="Razem" centerValue={fmtMoney(exp, main, true)} />
+            {chartsReady ? <Donut slices={slices} centerLabel="Razem" centerValue={fmtMoney(exp, main, true)} /> : <div className="skeleton" style={{ height: 150 }} />}
           </div>
           <AiAnalysisCard data={data} txs={txs} helpers={helpers} update={update} rangeLabel={PRESETS.find((p) => p.id === preset)?.label || "własny zakres"} />
           {data.goals.length > 0 && (
@@ -2099,7 +2108,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                         <XAxis dataKey="label" tick={{ fill: "var(--muted)", fontSize: 10.5, fontWeight: 700 }} axisLine={false} tickLine={false} minTickGap={24} />
                         <YAxis tick={{ fill: "var(--muted)", fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} width={38} domain={["auto", "auto"]} />
                         <RTooltip contentStyle={{ background: "var(--surface3)", border: "1px solid var(--line)", borderRadius: 12, fontSize: 12.5, fontWeight: 700, color: "var(--text)" }} formatter={(v) => `${v} l/100km`} />
-                        <Line type="monotone" dataKey="Spalanie" stroke="#F97316" strokeWidth={2.5} dot={{ r: 3.5, fill: "#F97316", strokeWidth: 0 }} activeDot={{ r: 5 }} />
+                        <Line type="monotone" dataKey="Spalanie" stroke="#F97316" strokeWidth={2.5} dot={{ r: 3.5, fill: "#F97316", strokeWidth: 0 }} activeDot={{ r: 5 }} isAnimationActive={false} />
                       </LineChart>
                     </ResponsiveContainer>
                   </div>
@@ -2729,7 +2738,7 @@ function Auth({ users, onLogin, onRegister }) {
     else onLogin(users.find((x) => x.login === login.trim()));
   };
   return (
-    <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", padding: "calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom))" }}>
+    <div className="auth-wrap">
       <div className="card fade-in" style={{ width: "min(420px, 100%)", padding: 28 }}>
         <div style={{ textAlign: "center", marginBottom: 22 }}>
           <div className="icon-badge" style={{ width: 58, height: 58, borderRadius: 20, background: "var(--accent-dim)", color: "var(--accent)", margin: "0 auto 12px" }}>
@@ -3139,7 +3148,10 @@ export default function App() {
     await store.set("fin:session", { userId: u.id });
     setView("dashboard"); setSettingsSub(null);
     setPhase("app");
-    requestAnimationFrame(() => window.scrollTo(0, 0));
+    requestAnimationFrame(() => {
+      window.scrollTo(0, 0);
+      setTimeout(() => window.dispatchEvent(new Event("resize")), 80);
+    });
   };
   const register = async (u) => {
     const next = [...users, u];
