@@ -168,6 +168,13 @@ function useCountUp(value, dur = 700) {
   return display;
 }
 
+function scrollTopAll(smooth = false) {
+  const behavior = smooth ? "smooth" : "auto";
+  try { window.scrollTo({ top: 0, behavior }); } catch { window.scrollTo(0, 0); }
+  const el = document.querySelector(".app-scroll");
+  if (el) { try { el.scrollTo({ top: 0, behavior }); } catch { el.scrollTop = 0; } }
+}
+
 function useMedia(query) {
   const [m, setM] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
@@ -184,7 +191,7 @@ function useMedia(query) {
 const CSS = `
 @import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
 * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
-html, body { scrollbar-width: none; -ms-overflow-style: none; overflow-x: hidden; width: 100%; overscroll-behavior-x: none; max-width: 100vw; touch-action: pan-y pinch-zoom; position: relative; }
+html, body { scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior-x: none; touch-action: pan-y pinch-zoom; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display: none; }
 .sheet-body { scrollbar-width: none; }
 .sheet-body::-webkit-scrollbar { display: none; }
@@ -194,7 +201,7 @@ button, .btn, .cat-tile, .tx-row, .nav-item, .seg button, input, select, textare
 .seg::-webkit-scrollbar { display: none; }
 .fin-root {
   font-family: 'Manrope', system-ui, sans-serif;
-  min-height: 100vh; min-height: 100dvh; width: 100%; max-width: 100vw; overflow-x: clip;
+  min-height: 100vh; min-height: 100dvh; width: 100%; overflow-x: clip;
   background: var(--bg); color: var(--text);
   transition: background .3s ease, color .3s ease;
   font-size: 15px;
@@ -283,9 +290,15 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 }
 @media (min-width: 1024px) { .toast { bottom: 28px; } }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
+@media (max-width: 1023px) {
+  .fin-root { height: 100vh; height: 100dvh; overflow: hidden; }
+  .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; scrollbar-width: none; }
+  .app-scroll::-webkit-scrollbar { display: none; }
+}
+@media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
 .bottom-nav {
   position: fixed; bottom: var(--vv-off, 0px); left: 0; right: 0; z-index: 40;
-  transition: bottom .18s ease;
+  transition: bottom .22s ease;
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   transform: translateZ(0); border-top: 1px solid var(--line);
@@ -1007,7 +1020,7 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
         </div>
       )}
       {remaining === 0 && filtered.length > baseLimit && (
-        <button className="btn btn-ghost" style={{ width: "100%", marginTop: 12 }} onClick={() => { setLimit(baseLimit); window.scrollTo({ top: 0, behavior: "smooth" }); }}>
+        <button className="btn btn-ghost" style={{ width: "100%", marginTop: 12 }} onClick={() => { setLimit(baseLimit); scrollTopAll(true); }}>
           Zwiń listę
         </button>
       )}
@@ -2945,14 +2958,19 @@ function More({ go, data }) {
 function ToTopButton() {
   const [show, setShow] = useState(false);
   useEffect(() => {
-    const fn = () => setShow(window.scrollY > 350);
+    const el = document.querySelector(".app-scroll");
+    const fn = () => setShow((window.scrollY || 0) > 350 || (el ? el.scrollTop : 0) > 350);
     window.addEventListener("scroll", fn, { passive: true });
+    if (el) el.addEventListener("scroll", fn, { passive: true });
     fn();
-    return () => window.removeEventListener("scroll", fn);
+    return () => {
+      window.removeEventListener("scroll", fn);
+      if (el) el.removeEventListener("scroll", fn);
+    };
   }, []);
   return (
     <button className={`to-top no-print ${show ? "show" : ""}`} aria-label="Wróć na górę"
-      onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}>
+      onClick={() => scrollTopAll(true)}>
       <ArrowUp size={20} strokeWidth={2.4} />
     </button>
   );
@@ -3154,7 +3172,7 @@ export default function App() {
         await loadUserData(s.userId);
         setUserId(s.userId);
         setPhase("app");
-        requestAnimationFrame(() => window.scrollTo(0, 0));
+        requestAnimationFrame(() => scrollTopAll());
       } else setPhase("auth");
     })();
   }, []); // eslint-disable-line
@@ -3193,12 +3211,8 @@ export default function App() {
     setView("dashboard"); setSettingsSub(null);
     setPhase("app");
     requestAnimationFrame(() => {
-      window.scrollTo(0, 0);
-      setTimeout(() => {
-        window.scrollTo(0, 2);
-        window.scrollTo(0, 0);
-        window.dispatchEvent(new Event("resize"));
-      }, 120);
+      scrollTopAll();
+      setTimeout(() => window.dispatchEvent(new Event("resize")), 120);
     });
   };
   const register = async (u) => {
@@ -3211,7 +3225,7 @@ export default function App() {
     if (data && userId) await store.set(`fin:data:${userId}`, data);
     await store.del("fin:session");
     setUserId(null); setData(null); setPhase("auth");
-    requestAnimationFrame(() => window.scrollTo(0, 0));
+    requestAnimationFrame(() => scrollTopAll());
   };
   const deleteAccount = async () => {
     await store.del(`fin:data:${userId}`);
@@ -3263,7 +3277,7 @@ export default function App() {
       update((d) => ({ ...d, transactions: [...d.transactions, tx], refuels: linkedRefuel ? [...d.refuels, linkedRefuel] : d.refuels })));
   };
 
-  const go = (v) => { setView(v); setSettingsSub(null); window.scrollTo({ top: 0 }); };
+  const go = (v) => { setView(v); setSettingsSub(null); scrollTopAll(); };
   const generateReport = (range) => { setReportRange(range); go("reports"); };
 
   /* keyboard shortcut Ctrl+K → new transaction */
@@ -3319,6 +3333,7 @@ export default function App() {
   return (
     <div className={`fin-root ${data.settings.hideBalance ? "incognito" : ""}`} data-theme={theme}>
       <style>{CSS}</style>
+      <div className="app-scroll">
       <div style={{ display: "flex" }}>
         {isDesktop && (
           <aside className="sidebar no-print">
@@ -3352,6 +3367,7 @@ export default function App() {
         <main style={{ flex: 1, minWidth: 0, maxWidth: 1100, margin: "0 auto", padding: isDesktop ? "28px 32px 40px" : "calc(16px + env(safe-area-inset-top)) 16px calc(114px + env(safe-area-inset-bottom))" }}>
           {content}
         </main>
+      </div>
       </div>
 
       {!isDesktop && (
