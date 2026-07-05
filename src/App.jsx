@@ -7,13 +7,88 @@ import {
   PawPrint, Wrench, CircleHelp, Wallet, ArrowUpRight, ArrowDownRight, Calendar,
   RefreshCw, LogOut, UserRound, Palette, Coins, Repeat, CarFront, Check, Printer,
   Droplets, Gauge, MapPin, Sun, Moon, Percent, Landmark, Music, Baby, Bus,
-  ChevronUp, ChevronDown, Menu, RotateCcw, Lock, Eye, EyeOff, ArrowUp, Sparkles, AlertTriangle
+  ChevronUp, ChevronDown, Menu, RotateCcw, Lock, Eye, EyeOff, ArrowUp, Sparkles, AlertTriangle,
+  ThumbsUp, ThumbsDown, Minus
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
   PieChart, Pie, Cell, AreaChart, Area, CartesianGrid, LineChart, Line
 } from "recharts";
-import { supabase } from "./supabase";
+/* ================= PODGLĄD: symulowana baza (w prawdziwej wersji ten blok
+   zastępuje import { supabase } from "./supabase") ================= */
+const __mem = new Map();
+const __st = {
+  async get(k) {
+    try { if (window.storage) { const r = await window.storage.get(k); return r ? JSON.parse(r.value) : null; } } catch {}
+    return __mem.has(k) ? JSON.parse(__mem.get(k)) : null;
+  },
+  async set(k, v) {
+    const s = JSON.stringify(v);
+    try { if (window.storage) { await window.storage.set(k, s); return; } } catch {}
+    __mem.set(k, s);
+  },
+  async del(k) {
+    try { if (window.storage) { await window.storage.delete(k); return; } } catch {}
+    __mem.delete(k);
+  },
+};
+const __mkUser = (u) => ({ id: u.id, email: u.email, user_metadata: { display_name: u.name } });
+const supabase = {
+  auth: {
+    async getSession() {
+      const s = await __st.get("demo:session");
+      if (!s) return { data: { session: null } };
+      const users = (await __st.get("demo:users")) || [];
+      const u = users.find((x) => x.id === s.userId);
+      return { data: { session: u ? { user: __mkUser(u) } : null } };
+    },
+    onAuthStateChange() { return { data: { subscription: { unsubscribe() {} } } }; },
+    async signUp({ email, password, options }) {
+      const users = (await __st.get("demo:users")) || [];
+      if (users.some((x) => x.email === email)) return { data: { user: { identities: [] } }, error: null };
+      const u = { id: "u" + Math.random().toString(36).slice(2, 10), email, pass: password, name: options?.data?.display_name || email.split("@")[0] };
+      await __st.set("demo:users", [...users, u]);
+      await __st.set("demo:session", { userId: u.id });
+      return { data: { session: { user: __mkUser(u) }, user: { ...__mkUser(u), identities: [{}] } }, error: null };
+    },
+    async signInWithPassword({ email, password }) {
+      const users = (await __st.get("demo:users")) || [];
+      const u = users.find((x) => x.email === email && x.pass === password);
+      if (!u) return { data: {}, error: { message: "Invalid login credentials" } };
+      await __st.set("demo:session", { userId: u.id });
+      return { data: { user: __mkUser(u) }, error: null };
+    },
+    async signOut() { await __st.del("demo:session"); return { error: null }; },
+    async resetPasswordForEmail() { return { error: null }; },
+    async updateUser({ password }) {
+      const s = await __st.get("demo:session");
+      const users = (await __st.get("demo:users")) || [];
+      await __st.set("demo:users", users.map((x) => (x.id === s?.userId ? { ...x, pass: password } : x)));
+      return { error: null };
+    },
+    async rpc() { return { error: null }; },
+  },
+  async rpc(name) {
+    if (name === "delete_user") {
+      const s = await __st.get("demo:session");
+      if (s) {
+        const users = (await __st.get("demo:users")) || [];
+        await __st.set("demo:users", users.filter((x) => x.id !== s.userId));
+        await __st.del("demo:data:" + s.userId);
+      }
+      return { error: null };
+    }
+    return { error: { message: "unknown rpc" } };
+  },
+  from(table) {
+    return {
+      select() { return { eq(_c, v) { return { async maybeSingle() { const d = await __st.get("demo:data:" + v); return { data: d ? { data: d } : null, error: null }; } }; } }; },
+      async upsert(row) { await __st.set("demo:data:" + row.user_id, row.data); return { error: null }; },
+      delete() { return { async eq(_c, v) { await __st.del("demo:data:" + v); return { error: null }; } }; },
+    };
+  },
+};
+/* ================= koniec symulowanej bazy ================= */
 
 /* ---------------- constants ---------------- */
 
@@ -91,13 +166,16 @@ const normalizeNav = (order) => {
 
 const emptyData = () => ({
   transactions: [], categories: DEFAULT_CATEGORIES, recurring: [],
-  cars: [], stations: [], refuels: [], goals: [], budgets: {}, reports: [],
+  cars: [], stations: [], refuels: [], goals: [], budgets: {}, reports: [], cycles: [],
   settings: { mainCurrency: "PLN", rates: { ...DEFAULT_RATES }, theme: "dark", navOrder: DEFAULT_NAV },
 });
 
 /* ---------------- storage: Supabase (dane) + localStorage (tylko motyw) ---------------- */
 
 const THEME_LS_KEY = "sakwa-theme";
+const KEEP_LS_KEY = "sakwa-keep30";
+const LASTACT_LS_KEY = "sakwa-last-activity";
+const AUTOF = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(min-width: 768px)").matches;
 const loadLocalTheme = () => { try { return localStorage.getItem(THEME_LS_KEY); } catch { return null; } };
 const saveLocalTheme = (id) => { try { localStorage.setItem(THEME_LS_KEY, id); } catch {} };
 
@@ -178,6 +256,25 @@ const fit = (text, base, min, limit) => {
   const len = String(text ?? "").length;
   return len <= limit ? base : Math.max(min, Math.round((base * limit) / len));
 };
+
+/* okres rozliczeniowy: od ostatniej "wypłaty startowej" (lub kalendarzowy miesiąc, gdy brak) */
+function getPeriod(data) {
+  const today = todayISO();
+  const cs = [...(data.cycles || [])].filter((c) => c <= today).sort();
+  if (!cs.length) return null;
+  const from = cs[cs.length - 1];
+  const prevFrom = cs.length > 1 ? cs[cs.length - 2] : null;
+  // średnia długość ostatnich cykli (fallback 30 dni)
+  let len = 30;
+  if (cs.length > 1) {
+    const diffs = [];
+    for (let i = Math.max(1, cs.length - 3); i < cs.length; i++) {
+      diffs.push((new Date(cs[i]) - new Date(cs[i - 1])) / 864e5);
+    }
+    len = Math.max(7, Math.round(diffs.reduce((a, b) => a + b, 0) / diffs.length));
+  }
+  return { from, prevFrom, len };
+}
 
 function useCountUp(value, dur = 700) {
   const [display, setDisplay] = useState(value);
@@ -314,7 +411,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 }
 @media (min-width: 768px) { .sheet { width: min(560px, 92vw); } }
 @keyframes modalIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.95); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
-.sheet-body { overflow-y: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 6px 20px 22px; }
+.sheet-body { overflow-y: auto; overflow-x: clip; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 6px 20px 22px; touch-action: pan-y; }
+.sheet-body input, .sheet-body select, .sheet-body textarea { min-width: 0; max-width: 100%; }
+input[type="date"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; min-height: 46px; text-align: left; }
+input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .toast {
   position: fixed; bottom: calc(88px + var(--vv-off, 0px) + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
@@ -333,6 +433,10 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
 .bottom-nav {
   position: fixed; bottom: var(--vv-off, 0px); left: 0; right: 0; z-index: 40;
+  transition: transform .28s cubic-bezier(.22,.9,.3,1);
+}
+.bottom-nav.nav-hidden { transform: translateY(calc(100% + var(--vv-off, 0px) + 26px)); }
+.bottom-nav {
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
   transform: translateZ(0); border-top: 1px solid var(--line);
@@ -461,7 +565,14 @@ function Sheet({ open, onClose, title, children, wide }) {
   return (
     <>
       <div className="overlay no-print" onClick={onClose} />
-      <div className="sheet no-print" role="dialog" aria-modal="true" style={{ width: !isMobile && wide ? "min(760px,94vw)" : undefined }}>
+      <div className="sheet no-print" role="dialog" aria-modal="true" style={{ width: !isMobile && wide ? "min(760px,94vw)" : undefined }}
+        onKeyDown={(e) => {
+          if (e.key !== "Enter") return;
+          const t = e.target;
+          if (!t || t.tagName !== "INPUT" || t.type === "checkbox" || t.type === "radio") return;
+          const btn = e.currentTarget.querySelector(".btn-primary:not(:disabled)");
+          if (btn) { e.preventDefault(); btn.click(); }
+        }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 20px 8px", flexShrink: 0 }}>
           <div style={{ fontSize: 17.5, fontWeight: 800 }}>{title}</div>
           <button className="btn btn-ghost" style={{ padding: 8, borderRadius: 12 }} onClick={onClose} aria-label="Zamknij"><X size={18} /></button>
@@ -484,7 +595,7 @@ function Confirm({ conf, onDone }) {
       {needType && (
         <div style={{ marginBottom: 16 }}>
           <label className="label">Wpisz „{conf.typeToConfirm}", aby potwierdzić</label>
-          <input className="input" value={text} onChange={(e) => setText(e.target.value)} autoFocus />
+          <input className="input" value={text} onChange={(e) => setText(e.target.value)} autoFocus={AUTOF} />
         </div>
       )}
       <div style={{ display: "flex", gap: 10 }}>
@@ -655,7 +766,7 @@ function CategoryGrid({ categories, transactions, type, value, onChange }) {
       <Sheet open={full} onClose={() => setFull(false)} title="Wszystkie kategorie">
         <div style={{ position: "relative", marginBottom: 14 }}>
           <Search size={16} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
-          <input className="input" style={{ paddingLeft: 38 }} placeholder="Szukaj kategorii…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus />
+          <input className="input" style={{ paddingLeft: 38 }} placeholder="Szukaj kategorii…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus={AUTOF} />
         </div>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(84px, 1fr))", gap: 8 }}>
           {filtered.map((c) => (
@@ -685,6 +796,7 @@ function TransactionForm({ data, initial, onSave, onClose }) {
   const [showNote, setShowNote] = useState(!!initial?.note);
   const [recurring, setRecurring] = useState(false);
   const [recDay, setRecDay] = useState(new Date().getDate() > 28 ? 28 : new Date().getDate());
+  const [startCycle, setStartCycle] = useState(false);
   const [errs, setErrs] = useState({});
 
   useEffect(() => {
@@ -704,7 +816,8 @@ function TransactionForm({ data, initial, onSave, onClose }) {
     onSave({
       id: initial?.id || uid(), type, name: name.trim(), amount: Math.round(num * 100) / 100,
       currency, categoryId, date, note: note.trim(), recurringId: initial?.recurringId,
-    }, recurring && !editing ? { day: recDay } : null);
+    }, recurring && !editing ? { day: recDay } : null,
+    { startCycle: startCycle && type === "income" && !editing, cycleDate: date });
   };
 
   return (
@@ -737,6 +850,19 @@ function TransactionForm({ data, initial, onSave, onClose }) {
         <Field label="Notatka (opcjonalna)">
           <textarea className="input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
         </Field>
+      )}
+      {!editing && type === "income" && (
+        <div className="card" style={{ padding: 14, marginBottom: 14, background: "var(--surface2)", boxShadow: "none" }}>
+          <label style={{ display: "flex", alignItems: "flex-start", gap: 10, cursor: "pointer", fontWeight: 700, fontSize: 14 }}>
+            <input type="checkbox" checked={startCycle} onChange={(e) => setStartCycle(e.target.checked)} style={{ width: 18, height: 18, accentColor: "var(--accent)", marginTop: 2, flexShrink: 0 }} />
+            <span>
+              Zakończ obecny miesiąc i rozpocznij nowy od tej wypłaty
+              <span style={{ display: "block", fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginTop: 3, lineHeight: 1.5 }}>
+                Statystyki na Pulpicie będą liczone „od wypłaty do wypłaty" zamiast od 1. dnia miesiąca — przydatne, gdy pensja przychodzi w różnych dniach.
+              </span>
+            </span>
+          </label>
+        </div>
       )}
       {!editing && (
         <div className="card" style={{ padding: 14, marginBottom: 16, background: "var(--surface2)", boxShadow: "none" }}>
@@ -836,8 +962,16 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
   const prevYM = `${prev.getFullYear()}-${String(prev.getMonth() + 1).padStart(2, "0")}`;
 
   const balance = data.transactions.reduce((s, t) => s + (t.type === "income" ? 1 : -1) * toMain(t.amount, t.currency), 0);
-  const monthTx = data.transactions.filter((t) => ym(t.date) === curYM);
-  const prevTx = data.transactions.filter((t) => ym(t.date) === prevYM);
+  const period = getPeriod(data);
+  const todayStr = todayISO();
+  const monthTx = period
+    ? data.transactions.filter((t) => t.date >= period.from && t.date <= todayStr)
+    : data.transactions.filter((t) => ym(t.date) === curYM);
+  const prevTx = period
+    ? (period.prevFrom ? data.transactions.filter((t) => t.date >= period.prevFrom && t.date < period.from) : [])
+    : data.transactions.filter((t) => ym(t.date) === prevYM);
+  const periodLabel = period ? "w tym okresie" : "w tym mies.";
+  const vsLabel = period ? "vs poprzedni okres" : "vs poprzedni mies.";
   const sum = (arr, type) => arr.filter((t) => t.type === type).reduce((s, t) => s + toMain(t.amount, t.currency), 0);
   const inc = sum(monthTx, "income"), exp = sum(monthTx, "expense");
   const pInc = sum(prevTx, "income"), pExp = sum(prevTx, "expense");
@@ -892,14 +1026,27 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
   const prevBal = pInc - pExp, curBal = inc - exp;
   const balPct = prevBal !== 0 ? ((curBal - prevBal) / Math.abs(prevBal)) * 100 : null;
 
-  /* forecast: spending pace + upcoming recurring this month */
+  /* forecast: tempo wydatków + nadchodzące płatności cykliczne, w granicach okresu */
   const dayOfMonth = now.getDate();
   const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysElapsed = period
+    ? Math.max(1, Math.round((new Date(todayStr) - new Date(period.from)) / 864e5) + 1)
+    : dayOfMonth;
+  const daysRemaining = period
+    ? Math.max(0, period.len - daysElapsed)
+    : daysInMonth - dayOfMonth;
   const upcomingRec = data.recurring
     .filter((r) => !r.paused && Math.min(r.day, 28) > dayOfMonth)
     .reduce((s, r) => s + (r.type === "income" ? 1 : -1) * toMain(r.amount, r.currency), 0);
-  const dailyExp = dayOfMonth > 0 ? exp / dayOfMonth : 0;
-  const forecast = balance - dailyExp * (daysInMonth - dayOfMonth) + upcomingRec;
+  const dailyExp = exp / daysElapsed;
+  const forecast = balance - dailyExp * daysRemaining + (period ? 0 : upcomingRec);
+
+  /* (9) ocena statusu salda względem dni pozostałych do końca okresu */
+  const saldoStatus = forecast < 0
+    ? { icon: ThumbsDown, color: "var(--neg)", bg: "var(--neg-dim)", text: `Przy tym tempie zabraknie środków przed końcem ${period ? "okresu" : "miesiąca"}` }
+    : forecast >= balance
+      ? { icon: ThumbsUp, color: "var(--accent)", bg: "var(--accent-dim)", text: `Świetnie — saldo utrzyma się do końca ${period ? "okresu" : "miesiąca"} (zostało ${daysRemaining} dni)` }
+      : { icon: Minus, color: "var(--warn)", bg: "color-mix(in srgb, var(--warn) 15%, transparent)", text: `Stabilnie — saldo lekko stopnieje przez pozostałe ${daysRemaining} dni` };
 
   /* budgets: spent this month per budgeted category */
   const budgetRows = Object.entries(data.budgets?.[curYM] || {})
@@ -926,23 +1073,26 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
           <div className="big-num hero-num-grad sens" style={{ fontSize: `min(${fit(fmtMoney(balance, main), 46, 24, 12)}px, 9.5vw)` }}>{fmtMoney(animBalance, main)}</div>
           <div className="sens" style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
             <span className="chip" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
-              <ArrowUpRight size={14} /> {fmtMoney(inc, main, true)} w tym mies.
+              <ArrowUpRight size={14} /> {fmtMoney(inc, main, true)} {periodLabel}
             </span>
             <span className="chip" style={{ background: "var(--neg-dim)", color: "var(--neg)" }}>
-              <ArrowDownRight size={14} /> {fmtMoney(exp, main, true)} w tym mies.
+              <ArrowDownRight size={14} /> {fmtMoney(exp, main, true)} {periodLabel}
             </span>
+          </div>
+          <div className="chip" style={{ background: saldoStatus.bg, color: saldoStatus.color, marginTop: 12, maxWidth: "100%", whiteSpace: "normal", lineHeight: 1.4, padding: "7px 12px" }}>
+            <saldoStatus.icon size={15} style={{ flexShrink: 0 }} /> <span>{saldoStatus.text}</span>
           </div>
         </div>
       </div>
 
       <div className="stat-grid stagger">
-        <StatCard icon={ArrowUpRight} label="Przychody" value={fmtMoney(inc, main, true)} tone="pos" trend={trend(inc, pInc)} sub="vs poprzedni mies." />
-        <StatCard icon={ArrowDownRight} label="Wydatki" value={fmtMoney(exp, main, true)} tone="neg" trend={trend(exp, pExp)} sub="vs poprzedni mies." />
+        <StatCard icon={ArrowUpRight} label="Przychody" value={fmtMoney(inc, main, true)} tone="pos" trend={trend(inc, pInc)} sub={vsLabel} />
+        <StatCard icon={ArrowDownRight} label="Wydatki" value={fmtMoney(exp, main, true)} tone="neg" trend={trend(exp, pExp)} sub={vsLabel} />
         <StatCard icon={PiggyBank} label="Bilans miesiąca" value={fmtMoney(curBal, main, true)} tone="info" trend={balPct}
-          sub={balPct != null ? `${balPct >= 0 ? "lepiej" : "gorzej"} niż mies. temu` : "brak danych z poprz. mies."} />
+          sub={balPct != null ? `${balPct >= 0 ? "lepiej" : "gorzej"} niż poprzednio` : (period ? "pierwszy okres — brak porównania" : "brak danych z poprz. mies.")} />
         <StatCard icon={Percent} label="Stopa oszczędności" value={`${Math.max(0, savingsRate).toFixed(0)}%`} sub={inc > 0 ? "przychodów zostaje" : "brak przychodów"} />
         <StatCard icon={TrendingUp} label="Prognoza salda" value={fmtMoney(forecast, main, true)} tone={forecast >= balance ? "pos" : "neg"}
-          sub="na koniec miesiąca · tempo wydatków + cykliczne" />
+          sub={period ? `koniec okresu za ~${daysRemaining} dni · tempo wydatków` : "na koniec miesiąca · tempo wydatków + cykliczne"} />
       </div>
 
       {budgetRows.length > 0 && (
@@ -1008,7 +1158,7 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
           Zanim go pierwszy raz włączysz, ustaw <b style={{ color: "var(--text)" }}>4-cyfrowy kod</b>: będzie wymagany
           do <b style={{ color: "var(--text)" }}>wyłączenia</b> trybu, żeby nikt poza Tobą nie mógł odsłonić Twoich finansów.
         </p>
-        <Field label="Wybierz kod (4 cyfry)"><PinDigits value={pin1} onChange={(v) => { setPin1(v); setPinErr(""); }} error={pinErr} autoFocus /></Field>
+        <Field label="Wybierz kod (4 cyfry)"><PinDigits value={pin1} onChange={(v) => { setPin1(v); setPinErr(""); }} error={pinErr} autoFocus={AUTOF} /></Field>
         <Field label="Powtórz kod" error={pinErr}><PinDigits value={pin2} onChange={(v) => { setPin2(v); setPinErr(""); }} error={pinErr} /></Field>
         <div style={{ display: "flex", gap: 10 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPinSheet(null)}>Anuluj</button>
@@ -1020,7 +1170,7 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
         <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 16 }}>
           Podaj 4-cyfrowy kod, aby odsłonić kwoty.
         </p>
-        <Field label="Kod" error={pinErr}><PinDigits value={pinTry} onChange={(v) => { setPinTry(v); setPinErr(""); }} error={pinErr} autoFocus /></Field>
+        <Field label="Kod" error={pinErr}><PinDigits value={pinTry} onChange={(v) => { setPinTry(v); setPinErr(""); }} error={pinErr} autoFocus={AUTOF} /></Field>
         <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
           <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPinSheet(null)}>Anuluj</button>
           <button className="btn btn-primary" style={{ flex: 2 }} onClick={tryDisable}>Wyłącz incognito</button>
@@ -1034,7 +1184,7 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
           a tryb incognito wyłączony. Przy następnym włączeniu ustawisz nowy kod.
         </p>
         <Field label="Hasło do konta" error={pinErr}>
-          <input type="password" className={`input ${pinErr ? "err" : ""}`} value={fpPass} autoFocus
+          <input type="password" className={`input ${pinErr ? "err" : ""}`} value={fpPass} autoFocus={AUTOF}
             onChange={(e) => { setFpPass(e.target.value); setPinErr(""); }} onKeyDown={(e) => e.key === "Enter" && forgotPin()} />
         </Field>
         <div style={{ display: "flex", gap: 10 }}>
@@ -2423,7 +2573,7 @@ function StationForm({ initial, onSave, onClose }) {
   const [err, setErr] = useState("");
   return (
     <>
-      <Field label="Nazwa stacji" error={err}><input className={`input ${err ? "err" : ""}`} placeholder="np. Orlen Radlin" value={name} onChange={(e) => setName(e.target.value)} autoFocus /></Field>
+      <Field label="Nazwa stacji" error={err}><input className={`input ${err ? "err" : ""}`} placeholder="np. Orlen Radlin" value={name} onChange={(e) => setName(e.target.value)} autoFocus={AUTOF} /></Field>
       <div style={{ display: "flex", gap: 10 }}>
         <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Anuluj</button>
         <button className="btn btn-primary" style={{ flex: 2 }} onClick={() => (name.trim() ? onSave({ id: initial?.id || uid(), name: name.trim() }) : setErr("Podaj nazwę stacji."))}>{initial?.id ? "Zapisz zmiany" : "Dodaj stację"}</button>
@@ -2594,7 +2744,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
   if (sub === "categories") return <CategoriesManager data={data} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
   if (sub === "recurring") return <RecurringManager data={data} helpers={{ main: data.settings.mainCurrency }} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
   if (sub === "currency") return <CurrencyManager data={data} update={update} toast={toast} back={() => setSub(null)} />;
-  if (sub === "profile") return <ProfileManager user={user} updateUser={updateUser} toast={toast} back={() => setSub(null)} />;
+  if (sub === "profile") return <ProfileManager user={user} updateUser={updateUser} toast={toast} confirm={confirm} onLogout={onLogout} onDeleteAccount={onDeleteAccount} back={() => setSub(null)} />;
   if (sub === "nav") return <NavManager data={data} update={update} toast={toast} back={() => setSub(null)} />;
   if (sub === "cars") return <CarsStationsManager data={data} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
 
@@ -2630,21 +2780,10 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
       </div>
       <ThemePicker open={themeSheet} onClose={() => setThemeSheet(false)} current={data.settings.theme}
         onPick={(id) => { update((d) => ({ ...d, settings: { ...d.settings, theme: id } })); toast(`Motyw: ${THEMES.find((t) => t.id === id)?.label}`); }} />
-      <div className="card" style={{ padding: 6 }}>
-        <button className="tx-row row-press" style={{ width: "100%", border: "none", background: "none", fontFamily: "inherit", color: "var(--text)", cursor: "pointer", textAlign: "left" }}
-          onClick={() => confirm({ title: "Wylogować?", desc: "Twoje dane pozostaną zapisane na tym urządzeniu.", confirmLabel: "Wyloguj" }, onLogout)}>
-          <div className="icon-badge" style={{ background: "var(--surface2)", color: "var(--muted)" }}><LogOut size={18} /></div>
-          <div style={{ fontWeight: 800, fontSize: 14.5 }}>Wyloguj</div>
-        </button>
-        <button className="tx-row row-press" style={{ width: "100%", border: "none", background: "none", fontFamily: "inherit", color: "var(--neg)", cursor: "pointer", textAlign: "left" }}
-          onClick={() => confirm({ title: "Usunąć konto?", desc: `Konto „${user.login}" oraz WSZYSTKIE jego dane (transakcje, cele, auta, tankowania) zostaną trwale usunięte z tego urządzenia. Tej operacji nie można cofnąć.`, danger: true, confirmLabel: "Usuń konto na zawsze", typeToConfirm: user.login }, onDeleteAccount)}>
-          <div className="icon-badge" style={{ background: "var(--neg-dim)", color: "var(--neg)" }}><Trash2 size={18} /></div>
-          <div style={{ fontWeight: 800, fontSize: 14.5 }}>Usuń konto</div>
-        </button>
-      </div>
+
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 19 · baza Supabase
+        <br />Sakwa · kompilacja 20 · baza Supabase
       </p>
     </div>
   );
@@ -2833,7 +2972,7 @@ function CurrencyManager({ data, update, toast, back }) {
   );
 }
 
-function ProfileManager({ user, updateUser, toast, back }) {
+function ProfileManager({ user, updateUser, toast, confirm, onLogout, onDeleteAccount, back }) {
   const [name, setName] = useState(user.name);
   const [color, setColor] = useState(user.avatarColor || AVATAR_COLORS[0]);
   const [err, setErr] = useState("");
@@ -2861,13 +3000,25 @@ function ProfileManager({ user, updateUser, toast, back }) {
           Zapisz profil
         </button>
       </div>
+      <div className="card" style={{ padding: 6, marginTop: 14 }}>
+        <button className="tx-row row-press" style={{ width: "100%", border: "none", background: "none", fontFamily: "inherit", color: "var(--text)", cursor: "pointer", textAlign: "left" }}
+          onClick={() => confirm({ title: "Wylogować?", desc: "Twoje dane są bezpiecznie zapisane w bazie — po ponownym zalogowaniu wszystko wróci.", confirmLabel: "Wyloguj" }, onLogout)}>
+          <div className="icon-badge" style={{ background: "var(--surface2)", color: "var(--muted)" }}><LogOut size={18} /></div>
+          <div style={{ fontWeight: 800, fontSize: 14.5 }}>Wyloguj</div>
+        </button>
+        <button className="tx-row row-press" style={{ width: "100%", border: "none", background: "none", fontFamily: "inherit", color: "var(--neg)", cursor: "pointer", textAlign: "left" }}
+          onClick={() => confirm({ title: "Usunąć konto?", desc: `Konto „${user.login}" oraz WSZYSTKIE jego dane (transakcje, cele, auta, tankowania) zostaną trwale usunięte z bazy. Tej operacji nie można cofnąć.`, danger: true, confirmLabel: "Usuń konto na zawsze", typeToConfirm: user.login }, onDeleteAccount)}>
+          <div className="icon-badge" style={{ background: "var(--neg-dim)", color: "var(--neg)" }}><Trash2 size={18} /></div>
+          <div style={{ fontWeight: 800, fontSize: 14.5 }}>Usuń konto</div>
+        </button>
+      </div>
     </div>
   );
 }
 
 /* ---------------- auth ---------------- */
 
-function Auth({ onAuthed, onAwaitingVerify }) {
+function Auth({ onAuthed, onAwaitingVerify, onAwaitingReset }) {
   const [mode, setMode] = useState("login"); // login | register | reset
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
@@ -2875,6 +3026,7 @@ function Auth({ onAuthed, onAwaitingVerify }) {
   const [errs, setErrs] = useState({});
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState("");
+  const [keep30, setKeep30] = useState(false);
 
   const switchMode = (m) => { setMode(m); setErrs({}); setInfo(""); };
 
@@ -2893,8 +3045,14 @@ function Auth({ onAuthed, onAwaitingVerify }) {
     setBusy(true);
     try {
       if (mode === "reset") {
-        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
-        if (error) throw error;
+        try {
+          const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+          if (error && !/not.?found|no user/i.test(error.message || "")) throw error;
+        } catch (err) {
+          if (!/not.?found|no user/i.test(err?.message || "")) throw err;
+        }
+        if (onAwaitingReset) onAwaitingReset();
+        // Zawsze ten sam komunikat — brak konta = brak maila, ale nie zdradzamy tego użytkownikowi
         setInfo("Jeśli konto z tym adresem istnieje, wysłaliśmy link do zmiany hasła. Sprawdź skrzynkę (także folder spam).");
       } else if (mode === "register") {
         const { data, error } = await supabase.auth.signUp({
@@ -2914,6 +3072,11 @@ function Auth({ onAuthed, onAwaitingVerify }) {
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
         if (error) throw error;
+        try {
+          if (keep30) localStorage.setItem(KEEP_LS_KEY, "1");
+          else localStorage.removeItem(KEEP_LS_KEY);
+          localStorage.setItem(LASTACT_LS_KEY, String(Date.now()));
+        } catch {}
         onAuthed(data.user);
       }
     } catch (err) {
@@ -2970,6 +3133,12 @@ function Auth({ onAuthed, onAwaitingVerify }) {
           </>
         )}
 
+        {mode === "login" && (
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 700, fontSize: 13, marginBottom: 14, color: "var(--muted)" }}>
+            <input type="checkbox" checked={keep30} onChange={(e) => setKeep30(e.target.checked)} style={{ width: 17, height: 17, accentColor: "var(--accent)" }} />
+            Nie wylogowuj mnie przez 30 dni
+          </label>
+        )}
         {info && <p style={{ color: "var(--accent)", fontSize: 13, fontWeight: 700, lineHeight: 1.5, marginBottom: 12 }}>{info}</p>}
 
         <button className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} disabled={busy} onClick={submit}>
@@ -3082,7 +3251,8 @@ function Budgets({ data, helpers, update, toast }) {
           )}
         </div>
       )}
-      <div className="card" style={{ padding: 16 }}>
+      <div className="card" style={{ padding: 16 }}
+        onKeyDown={(e) => { if (e.key === "Enter" && e.target?.tagName === "INPUT") { e.preventDefault(); document.getElementById("budget-save")?.click(); } }}>
         <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13, lineHeight: 1.55, marginBottom: 14 }}>
           Ustaw limity wydatków (w {main}) dla kategorii na {monthLabel.toLowerCase()}. Puste pole = brak budżetu.
           {monthSel === "next" && " Limity zaczną obowiązywać od pierwszego dnia przyszłego miesiąca."}
@@ -3114,7 +3284,7 @@ function Budgets({ data, helpers, update, toast }) {
             </div>
           );
         })}
-        <button className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={save}>Zapisz budżety na {monthLabel.toLowerCase()}</button>
+        <button id="budget-save" className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={save}>Zapisz budżety na {monthLabel.toLowerCase()}</button>
       </div>
     </div>
   );
@@ -3276,8 +3446,10 @@ export default function App() {
   const [recoverySheet, setRecoverySheet] = useState(false);
   const [rp1, setRp1] = useState(""); const [rp2, setRp2] = useState("");
   const [rpErr, setRpErr] = useState(""); const [rpBusy, setRpBusy] = useState(false);
+  const [recoveryDone, setRecoveryDone] = useState(false);
   const enteredRef = useRef(null);
   const awaitingVerifyRef = useRef(false);
+  const awaitingResetRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [userId, setUserId] = useState(null);
   const [data, setData] = useState(null);
@@ -3287,6 +3459,9 @@ export default function App() {
   const [quickAdd, setQuickAdd] = useState(false);
   const [openRefuel, setOpenRefuel] = useState(false);
   const [toastState, setToastState] = useState(null); // {msg, action, onAction}
+  const [navHidden, setNavHidden] = useState(false);
+  const navHiddenRef = useRef(false);
+  useEffect(() => { navHiddenRef.current = navHidden; }, [navHidden]);
   const [conf, setConf] = useState(null);
   const [reportRange, setReportRange] = useState(null);
   const toastTimer = useRef(null);
@@ -3310,6 +3485,56 @@ export default function App() {
   const confirm = useCallback((cfg, onYes) => { confirmCb.current = onYes; setConf(cfg); }, []);
   const confirmDone = (yes) => { setConf(null); if (yes && confirmCb.current) confirmCb.current(); confirmCb.current = null; };
 
+  /* mobile: chowaj navbar przy scrollu w dół, pokazuj przy scrollu w górę */
+  useEffect(() => {
+    if (phase !== "app" || isDesktop) { setNavHidden(false); return; }
+    const el = document.querySelector(".app-scroll");
+    if (!el) return;
+    let last = el.scrollTop;
+    const onScroll = () => {
+      const y = el.scrollTop;
+      const dy = y - last;
+      if (y < 60) setNavHidden(false);
+      else if (dy > 8) setNavHidden(true);
+      else if (dy < -12) setNavHidden(false);
+      last = y;
+    };
+    el.addEventListener("scroll", onScroll, { passive: true });
+    return () => el.removeEventListener("scroll", onScroll);
+  }, [phase, isDesktop, view]);
+
+  /* auto-logout po 1h nieaktywności (chyba że użytkownik wybrał "30 dni") */
+  useEffect(() => {
+    if (phase !== "app") return;
+    const HOUR = 60 * 60 * 1000;
+    const keep = () => { try { return localStorage.getItem(KEEP_LS_KEY) === "1"; } catch { return false; } };
+    const touchAct = () => { try { localStorage.setItem(LASTACT_LS_KEY, String(Date.now())); } catch {} };
+    let lastWrite = 0;
+    const onAct = () => { const n = Date.now(); if (n - lastWrite > 20000) { lastWrite = n; touchAct(); } };
+    const check = () => {
+      if (keep()) return;
+      let last = 0;
+      try { last = Number(localStorage.getItem(LASTACT_LS_KEY) || 0); } catch {}
+      if (last && Date.now() - last > HOUR) {
+        toast("Wylogowano po godzinie nieaktywności");
+        logout();
+      }
+    };
+    touchAct();
+    check();
+    const iv = setInterval(check, 60 * 1000);
+    window.addEventListener("pointerdown", onAct, { passive: true });
+    window.addEventListener("keydown", onAct);
+    const scroller = document.querySelector(".app-scroll");
+    if (scroller) scroller.addEventListener("scroll", onAct, { passive: true });
+    return () => {
+      clearInterval(iv);
+      window.removeEventListener("pointerdown", onAct);
+      window.removeEventListener("keydown", onAct);
+      if (scroller) scroller.removeEventListener("scroll", onAct);
+    };
+  }, [phase]); // eslint-disable-line
+
   /* iOS Safari: keep bottom UI above the floating address bar.
      Instead of guessing from viewport math, measure the nav's real position vs the
      visible viewport bottom and lift it by exactly the covered amount (self-correcting). */
@@ -3324,6 +3549,7 @@ export default function App() {
         raf = null;
         const nav = navRef.current;
         if (!nav) { document.documentElement.style.setProperty("--vv-off", "0px"); return; }
+        if (navHiddenRef.current) return; // nie mierz schowanego navbara
         const visualBottom = vv.offsetTop + vv.height;
         const rect = nav.getBoundingClientRect();
         const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--vv-off")) || 0;
@@ -3357,7 +3583,12 @@ export default function App() {
       document.documentElement.scrollTop = 0;
       document.body.scrollTop = 0;
     };
-    const onFocusOut = () => setTimeout(() => { if (!isField(document.activeElement)) reset(); }, 80);
+    const isMobileEnv = window.matchMedia && window.matchMedia("(max-width: 1023px)").matches;
+    const onFocusOut = () => setTimeout(() => {
+      if (!isMobileEnv) return; // desktop: nigdy nie resetuj scrolla po blur pola
+      const vvOff = window.visualViewport ? window.visualViewport.offsetTop : 0;
+      if (!isField(document.activeElement) && vvOff > 0) reset();
+    }, 80);
     window.addEventListener("focusout", onFocusOut);
     const vv = window.visualViewport;
     const onVV = () => { if (vv && vv.offsetTop > 0 && !isField(document.activeElement)) reset(); };
@@ -3395,15 +3626,25 @@ export default function App() {
      e.g. when the e-mail confirmation link logs in from another tab) */
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "PASSWORD_RECOVERY") setRecoverySheet(true);
+      if (event === "PASSWORD_RECOVERY" && CAME_FROM_RECOVERY) setRecoverySheet(true);
       if (event === "SIGNED_IN" && session?.user) enterApp(session.user, { viaEvent: true });
     });
     (async () => {
       try {
         const { data: s } = await supabase.auth.getSession();
         const su = s?.session?.user;
-        if (su) await enterApp(su);
-        else setPhase("auth");
+        if (su) {
+          let expired = false;
+          try {
+            const keep = localStorage.getItem(KEEP_LS_KEY) === "1";
+            const last = Number(localStorage.getItem(LASTACT_LS_KEY) || 0);
+            expired = !keep && last > 0 && Date.now() - last > 60 * 60 * 1000;
+          } catch {}
+          if (expired) {
+            try { await supabase.auth.signOut(); } catch {}
+            setPhase("auth");
+          } else await enterApp(su);
+        } else setPhase("auth");
       } catch (e) {
         console.error(e);
         setPhase("auth");
@@ -3428,6 +3669,9 @@ export default function App() {
       // pokazuj tylko przy PIERWSZEJ weryfikacji konta (ta karta czekała po rejestracji)
       awaitingVerifyRef.current = false;
       setTimeout(() => toast("✅ E-mail potwierdzony — zalogowano automatycznie"), 350);
+    } else if (opts.viaEvent && awaitingResetRef.current) {
+      awaitingResetRef.current = false;
+      setTimeout(() => toast("✅ Hasło zmienione w drugiej karcie — zalogowano"), 350);
     }
     requestAnimationFrame(() => {
       scrollTopAll();
@@ -3524,7 +3768,7 @@ export default function App() {
   }, [data]);
 
   /* transactions ops */
-  const saveTx = (tx, recurringCfg) => {
+  const saveTx = (tx, recurringCfg, opts) => {
     update((d) => {
       let next = { ...d };
       const exists = d.transactions.some((t) => t.id === tx.id);
@@ -3533,10 +3777,16 @@ export default function App() {
         const recId = uid();
         next.recurring = [...d.recurring, { id: recId, name: tx.name, amount: tx.amount, currency: tx.currency, categoryId: tx.categoryId, type: tx.type, day: recurringCfg.day, startDate: tx.date, paused: false }];
       }
+      if (opts?.startCycle) {
+        const set = new Set([...(d.cycles || []), opts.cycleDate || tx.date]);
+        next.cycles = [...set].sort();
+      }
       return next;
     });
     setTxForm(null);
-    toast(recurringCfg ? "Transakcja dodana + płatność cykliczna utworzona" : "Transakcja zapisana");
+    toast(opts?.startCycle
+      ? "Wypłata zapisana · rozpoczęto nowy okres rozliczeniowy"
+      : recurringCfg ? "Transakcja dodana + płatność cykliczna utworzona" : "Transakcja zapisana");
   };
   const deleteTx = (tx) => {
     const linkedRefuel = tx.refuelId ? data.refuels.find((r) => r.id === tx.refuelId) : null;
@@ -3575,7 +3825,7 @@ export default function App() {
       <div className="fin-root" data-theme="dark">
         <style>{CSS}</style>
         <div className="app-scroll">
-          <Auth onAuthed={enterApp} onAwaitingVerify={() => { awaitingVerifyRef.current = true; }} />
+          <Auth onAuthed={enterApp} onAwaitingVerify={() => { awaitingVerifyRef.current = true; }} onAwaitingReset={() => { awaitingResetRef.current = true; }} />
         </div>
       </div>
     );
@@ -3647,7 +3897,7 @@ export default function App() {
       </div>
 
       {!isDesktop && (
-        <nav className="bottom-nav no-print" ref={navRef}>
+        <nav className={`bottom-nav no-print ${navHidden ? "nav-hidden" : ""}`} ref={navRef}>
           {mobileTabs.map((t) => {
             if (t.id === "__add") return (
               <button key="__add" onClick={() => setQuickAdd(true)} aria-label="Dodaj">
@@ -3705,7 +3955,7 @@ export default function App() {
           Kliknięto link resetujący — wpisz nowe hasło do konta. Min. 8 znaków, w tym mała i wielka litera oraz cyfra.
         </p>
         <Field label="Nowe hasło" error={rpErr}>
-          <input type="password" className={`input ${rpErr ? "err" : ""}`} autoComplete="new-password" value={rp1} autoFocus
+          <input type="password" className={`input ${rpErr ? "err" : ""}`} autoComplete="new-password" value={rp1} autoFocus={AUTOF}
             onChange={(e) => { setRp1(e.target.value); setRpErr(""); }} />
         </Field>
         <Field label="Powtórz hasło">
@@ -3724,12 +3974,35 @@ export default function App() {
               const { error } = await supabase.auth.updateUser({ password: rp1 });
               if (error) throw error;
               setRecoverySheet(false); setRp1(""); setRp2("");
-              toast("✅ Hasło zmienione — jesteś zalogowany");
+              setRecoveryDone(true);
             } catch (e) { setRpErr(authErrPl(e)); }
             finally { setRpBusy(false); }
           }}>{rpBusy ? "Zapisuję…" : "Zapisz nowe hasło"}</button>
         </div>
       </Sheet>
+
+      {recoveryDone && (
+        <>
+          <div className="overlay no-print" style={{ zIndex: 1200 }} />
+          <div className="card no-print fade-in" style={{ position: "fixed", zIndex: 1210, left: "50%", top: "50%", transform: "translate(-50%, -50%)", width: "min(400px, calc(100vw - 32px))", padding: "34px 26px", textAlign: "center" }}>
+            <div className="icon-badge" style={{ width: 64, height: 64, borderRadius: 22, background: "var(--accent-dim)", color: "var(--accent)", margin: "0 auto 16px" }}>
+              <Check size={32} strokeWidth={3} />
+            </div>
+            <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 10 }}>Hasło zmienione!</div>
+            <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 22 }}>
+              Zatwierdzono nowe hasło. Karta, z której rozpocząłeś reset, została automatycznie zalogowana —
+              możesz do niej wrócić i zamknąć tę.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => {
+                window.close();
+                setTimeout(() => toast("Zamknij tę kartę ręcznie i wróć do poprzedniej"), 300);
+              }}>Zamknij kartę</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setRecoveryDone(false)}>Zostań tutaj</button>
+            </div>
+          </div>
+        </>
+      )}
 
       {verifiedSplash && (
         <>
