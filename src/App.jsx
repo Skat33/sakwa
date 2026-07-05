@@ -78,6 +78,8 @@ const themeBlock = (t) => `
 
 const CAME_FROM_EMAIL_LINK =
   typeof window !== "undefined" && /type=signup|type=email|type=magiclink/.test(window.location.hash || "");
+const CAME_FROM_RECOVERY =
+  typeof window !== "undefined" && /type=recovery/.test(window.location.hash || "");
 
 const DEFAULT_NAV = ["dashboard", "history", "stats", "more", "fuel", "goals", "budgets", "reports", "settings"];
 const normalizeNav = (order) => {
@@ -111,6 +113,15 @@ async function dbSave(userId, data) {
     .upsert({ user_id: userId, data, updated_at: new Date().toISOString() });
   if (error) throw error;
 }
+
+const passwordProblems = (p) => {
+  const issues = [];
+  if (!p || p.length < 8) issues.push("min. 8 znaków");
+  if (!/[a-ząćęłńóśźż]/.test(p || "")) issues.push("mała litera");
+  if (!/[A-ZĄĆĘŁŃÓŚŹŻ]/.test(p || "")) issues.push("wielka litera");
+  if (!/[0-9]/.test(p || "")) issues.push("cyfra");
+  return issues;
+};
 
 async function sha256(text) {
   const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
@@ -2633,7 +2644,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
       </div>
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 18 · baza Supabase
+        <br />Sakwa · kompilacja 19 · baza Supabase
       </p>
     </div>
   );
@@ -2856,8 +2867,8 @@ function ProfileManager({ user, updateUser, toast, back }) {
 
 /* ---------------- auth ---------------- */
 
-function Auth({ onAuthed }) {
-  const [mode, setMode] = useState("login");
+function Auth({ onAuthed, onAwaitingVerify }) {
+  const [mode, setMode] = useState("login"); // login | register | reset
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [name, setName] = useState("");
@@ -2865,14 +2876,7 @@ function Auth({ onAuthed }) {
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState("");
 
-  const passwordProblems = (p) => {
-    const issues = [];
-    if (!p || p.length < 8) issues.push("min. 8 znaków");
-    if (!/[a-ząćęłńóśźż]/.test(p || "")) issues.push("mała litera");
-    if (!/[A-ZĄĆĘŁŃÓŚŹŻ]/.test(p || "")) issues.push("wielka litera");
-    if (!/[0-9]/.test(p || "")) issues.push("cyfra");
-    return issues;
-  };
+  const switchMode = (m) => { setMode(m); setErrs({}); setInfo(""); };
 
   const submit = async () => {
     const e = {};
@@ -2881,27 +2885,32 @@ function Auth({ onAuthed }) {
       const issues = passwordProblems(pass);
       if (issues.length) e.pass = "Hasło nie spełnia wymagań: " + issues.join(", ") + ".";
       if (!name.trim()) e.name = "Podaj nazwę wyświetlaną.";
-    } else if (!pass) {
+    } else if (mode === "login" && !pass) {
       e.pass = "Podaj hasło.";
     }
     setErrs(e); setInfo("");
     if (Object.keys(e).length) return;
     setBusy(true);
     try {
-      if (mode === "register") {
+      if (mode === "reset") {
+        const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo: window.location.origin });
+        if (error) throw error;
+        setInfo("Jeśli konto z tym adresem istnieje, wysłaliśmy link do zmiany hasła. Sprawdź skrzynkę (także folder spam).");
+      } else if (mode === "register") {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(), password: pass,
           options: { data: { display_name: name.trim() }, emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
-        // Supabase (przy włączonym potwierdzaniu e-maila) nie zwraca błędu dla zajętego adresu —
-        // zdradza go pusta lista identities. Wyłapujemy to jawnie:
         if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
-          setErrs({ email: "Konto z tym adresem e-mail już istnieje. Zaloguj się lub użyj funkcji resetu hasła." });
+          setErrs({ email: "Konto z tym adresem e-mail już istnieje. Zaloguj się lub użyj resetu hasła." });
           return;
         }
         if (data.session?.user) onAuthed(data.session.user);
-        else setInfo("Konto utworzone! Sprawdź skrzynkę e-mail i kliknij link potwierdzający, a potem zaloguj się.");
+        else {
+          if (onAwaitingVerify) onAwaitingVerify();
+          setInfo("Konto utworzone! Sprawdź skrzynkę e-mail i kliknij link potwierdzający — po kliknięciu ta karta zaloguje się sama.");
+        }
       } else {
         const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
         if (error) throw error;
@@ -2920,33 +2929,64 @@ function Auth({ onAuthed }) {
             <Wallet size={27} />
           </div>
           <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em" }}>Sakwa</div>
-          <div style={{ color: "var(--muted)", fontWeight: 700, fontSize: 13 }}>Twoje finanse, bezpiecznie w chmurze</div>
+          <div style={{ color: "var(--muted)", fontWeight: 700, fontSize: 13 }}>
+            {mode === "reset" ? "Odzyskiwanie dostępu do konta" : "Twoje finanse, bezpiecznie w chmurze"}
+          </div>
         </div>
-        <div style={{ marginBottom: 18 }}>
-          <Seg value={mode} onChange={(m) => { setMode(m); setErrs({}); setInfo(""); }}
-            options={[{ value: "login", label: "Logowanie" }, { value: "register", label: "Rejestracja" }]} />
-        </div>
-        {mode === "register" && (
-          <Field label="Nazwa wyświetlana" error={errs.name}>
-            <input className={`input ${errs.name ? "err" : ""}`} placeholder="np. Ania" value={name} onChange={(e) => setName(e.target.value)} />
-          </Field>
-        )}
-        <Field label="E-mail" error={errs.email}>
-          <input type="email" className={`input ${errs.email ? "err" : ""}`} placeholder="ty@przyklad.pl" autoCapitalize="none" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-        </Field>
-        <Field label="Hasło" error={errs.pass}>
-          <input type="password" className={`input ${errs.pass ? "err" : ""}`} placeholder={mode === "register" ? "silne hasło" : "twoje hasło"} autoComplete={mode === "register" ? "new-password" : "current-password"} value={pass}
-            onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
-          {mode === "register" && !errs.pass && (
-            <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
-              Min. 8 znaków, w tym mała i wielka litera oraz cyfra.
+
+        {mode !== "reset" ? (
+          <>
+            <div style={{ marginBottom: 18 }}>
+              <Seg value={mode} onChange={switchMode}
+                options={[{ value: "login", label: "Logowanie" }, { value: "register", label: "Rejestracja" }]} />
             </div>
-          )}
-        </Field>
+            {mode === "register" && (
+              <Field label="Nazwa wyświetlana" error={errs.name}>
+                <input className={`input ${errs.name ? "err" : ""}`} placeholder="np. Ania" value={name} onChange={(e) => setName(e.target.value)} />
+              </Field>
+            )}
+            <Field label="E-mail" error={errs.email}>
+              <input type="email" className={`input ${errs.email ? "err" : ""}`} placeholder="ty@przyklad.pl" autoCapitalize="none" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            </Field>
+            <Field label="Hasło" error={errs.pass}>
+              <input type="password" className={`input ${errs.pass ? "err" : ""}`} placeholder={mode === "register" ? "silne hasło" : "twoje hasło"} autoComplete={mode === "register" ? "new-password" : "current-password"} value={pass}
+                onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+              {mode === "register" && !errs.pass && (
+                <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+                  Min. 8 znaków, w tym mała i wielka litera oraz cyfra.
+                </div>
+              )}
+            </Field>
+          </>
+        ) : (
+          <>
+            <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 16 }}>
+              Podaj adres e-mail konta — wyślemy link, po którego kliknięciu ustawisz nowe hasło.
+            </p>
+            <Field label="E-mail" error={errs.email}>
+              <input type="email" className={`input ${errs.email ? "err" : ""}`} placeholder="ty@przyklad.pl" autoCapitalize="none" autoComplete="email" value={email}
+                onChange={(e) => setEmail(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+            </Field>
+          </>
+        )}
+
         {info && <p style={{ color: "var(--accent)", fontSize: 13, fontWeight: 700, lineHeight: 1.5, marginBottom: 12 }}>{info}</p>}
+
         <button className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} disabled={busy} onClick={submit}>
-          {busy ? "Chwileczkę…" : mode === "login" ? "Zaloguj się" : "Utwórz konto"}
+          {busy ? "Chwileczkę…" : mode === "login" ? "Zaloguj się" : mode === "register" ? "Utwórz konto" : "Wyślij link resetujący"}
         </button>
+
+        {mode === "login" && (
+          <button className="btn btn-ghost" style={{ width: "100%", marginTop: 10, fontSize: 12.5 }} onClick={() => switchMode("reset")}>
+            Nie pamiętam hasła
+          </button>
+        )}
+        {mode === "reset" && (
+          <button className="btn btn-ghost" style={{ width: "100%", marginTop: 10, fontSize: 12.5 }} onClick={() => switchMode("login")}>
+            ← Wróć do logowania
+          </button>
+        )}
+
         <p style={{ textAlign: "center", color: "var(--muted)", fontSize: 12, fontWeight: 600, marginTop: 16, lineHeight: 1.5 }}>
           Twoje dane są zapisywane w zabezpieczonej bazie i dostępne z każdego urządzenia po zalogowaniu.
         </p>
@@ -3233,7 +3273,11 @@ function ThemePicker({ open, onClose, current, onPick }) {
 export default function App() {
   const [phase, setPhase] = useState("loading");
   const [verifiedSplash, setVerifiedSplash] = useState(false);
+  const [recoverySheet, setRecoverySheet] = useState(false);
+  const [rp1, setRp1] = useState(""); const [rp2, setRp2] = useState("");
+  const [rpErr, setRpErr] = useState(""); const [rpBusy, setRpBusy] = useState(false);
   const enteredRef = useRef(null);
+  const awaitingVerifyRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [userId, setUserId] = useState(null);
   const [data, setData] = useState(null);
@@ -3351,6 +3395,7 @@ export default function App() {
      e.g. when the e-mail confirmation link logs in from another tab) */
   useEffect(() => {
     const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "PASSWORD_RECOVERY") setRecoverySheet(true);
       if (event === "SIGNED_IN" && session?.user) enterApp(session.user, { viaEvent: true });
     });
     (async () => {
@@ -3375,10 +3420,14 @@ export default function App() {
     await loadUserData(su);
     setView("dashboard"); setSettingsSub(null);
     setPhase("app");
-    if (CAME_FROM_EMAIL_LINK) {
+    if (CAME_FROM_RECOVERY) {
+      setRecoverySheet(true);
+    } else if (CAME_FROM_EMAIL_LINK) {
       setVerifiedSplash(true);
-    } else if (opts.viaEvent) {
-      setTimeout(() => toast("✅ Konto zweryfikowane — zalogowano automatycznie"), 350);
+    } else if (opts.viaEvent && awaitingVerifyRef.current) {
+      // pokazuj tylko przy PIERWSZEJ weryfikacji konta (ta karta czekała po rejestracji)
+      awaitingVerifyRef.current = false;
+      setTimeout(() => toast("✅ E-mail potwierdzony — zalogowano automatycznie"), 350);
     }
     requestAnimationFrame(() => {
       scrollTopAll();
@@ -3526,7 +3575,7 @@ export default function App() {
       <div className="fin-root" data-theme="dark">
         <style>{CSS}</style>
         <div className="app-scroll">
-          <Auth onAuthed={enterApp} />
+          <Auth onAuthed={enterApp} onAwaitingVerify={() => { awaitingVerifyRef.current = true; }} />
         </div>
       </div>
     );
@@ -3591,7 +3640,7 @@ export default function App() {
             )}
           </aside>
         )}
-        <main style={{ flex: 1, minWidth: 0, maxWidth: 1100, margin: "0 auto", padding: isDesktop ? "28px 32px 40px" : "calc(max(env(safe-area-inset-top), 34px) + 24px) 16px calc(118px + max(env(safe-area-inset-bottom), 10px))" }}>
+        <main style={{ flex: 1, minWidth: 0, maxWidth: 1380, margin: "0 auto", padding: isDesktop ? "28px 40px 48px" : "calc(max(env(safe-area-inset-top), 34px) + 24px) 16px calc(118px + max(env(safe-area-inset-bottom), 10px))" }}>
           {content}
         </main>
       </div>
@@ -3650,6 +3699,37 @@ export default function App() {
       </Sheet>
 
       <ToTopButton />
+
+      <Sheet open={recoverySheet} onClose={() => setRecoverySheet(false)} title="Ustaw nowe hasło">
+        <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 16 }}>
+          Kliknięto link resetujący — wpisz nowe hasło do konta. Min. 8 znaków, w tym mała i wielka litera oraz cyfra.
+        </p>
+        <Field label="Nowe hasło" error={rpErr}>
+          <input type="password" className={`input ${rpErr ? "err" : ""}`} autoComplete="new-password" value={rp1} autoFocus
+            onChange={(e) => { setRp1(e.target.value); setRpErr(""); }} />
+        </Field>
+        <Field label="Powtórz hasło">
+          <input type="password" className="input" autoComplete="new-password" value={rp2}
+            onChange={(e) => { setRp2(e.target.value); setRpErr(""); }}
+            onKeyDown={(e) => e.key === "Enter" && document.getElementById("rp-save")?.click()} />
+        </Field>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setRecoverySheet(false)}>Później</button>
+          <button id="rp-save" className="btn btn-primary" style={{ flex: 2 }} disabled={rpBusy} onClick={async () => {
+            const issues = passwordProblems(rp1);
+            if (issues.length) return setRpErr("Hasło nie spełnia wymagań: " + issues.join(", ") + ".");
+            if (rp1 !== rp2) return setRpErr("Hasła różnią się od siebie.");
+            setRpBusy(true);
+            try {
+              const { error } = await supabase.auth.updateUser({ password: rp1 });
+              if (error) throw error;
+              setRecoverySheet(false); setRp1(""); setRp2("");
+              toast("✅ Hasło zmienione — jesteś zalogowany");
+            } catch (e) { setRpErr(authErrPl(e)); }
+            finally { setRpBusy(false); }
+          }}>{rpBusy ? "Zapisuję…" : "Zapisz nowe hasło"}</button>
+        </div>
+      </Sheet>
 
       {verifiedSplash && (
         <>
