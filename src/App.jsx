@@ -2775,7 +2775,7 @@ function Auth({ onAuthed }) {
       if (mode === "register") {
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(), password: pass,
-          options: { data: { display_name: name.trim() } },
+          options: { data: { display_name: name.trim() }, emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
         if (data.session?.user) onAuthed(data.session.user);
