@@ -364,11 +364,14 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
   justify-content: center; color: var(--neg); border-radius: 0 15px 15px 0;
 }
 .sticky-head {
-  position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 90%, transparent);
+  position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent);
   backdrop-filter: blur(12px); padding-bottom: 10px;
 }
+@media (max-width: 1023px) {
+  .sticky-head { padding-top: calc(max(env(safe-area-inset-top), 34px) + 12px); margin-top: calc(-1 * (max(env(safe-area-inset-top), 34px) + 24px)); }
+}
 h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
-.auth-wrap { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: calc(20px + env(safe-area-inset-top)) 20px calc(20px + env(safe-area-inset-bottom)); }
+.auth-wrap { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: calc(max(env(safe-area-inset-top), 34px) + 16px) 20px calc(max(env(safe-area-inset-bottom), 16px) + 16px); }
 .hero-balance {
   position: relative; overflow: hidden; padding: 26px 24px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow);
@@ -2515,7 +2518,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
       </div>
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 14
+        <br />Sakwa · kompilacja 15
       </p>
     </div>
   );
@@ -3391,7 +3394,7 @@ export default function App() {
             )}
           </aside>
         )}
-        <main style={{ flex: 1, minWidth: 0, maxWidth: 1100, margin: "0 auto", padding: isDesktop ? "28px 32px 40px" : "calc(16px + env(safe-area-inset-top)) 16px calc(114px + env(safe-area-inset-bottom))" }}>
+        <main style={{ flex: 1, minWidth: 0, maxWidth: 1100, margin: "0 auto", padding: isDesktop ? "28px 32px 40px" : "calc(max(env(safe-area-inset-top), 34px) + 24px) 16px calc(118px + max(env(safe-area-inset-bottom), 10px))" }}>
           {content}
         </main>
       </div>
