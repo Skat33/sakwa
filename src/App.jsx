@@ -112,6 +112,11 @@ async function dbSave(userId, data) {
   if (error) throw error;
 }
 
+async function sha256(text) {
+  const buf = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
 const AUTH_ERRORS = [
   [/invalid login credentials/i, "Nieprawidłowy e-mail lub hasło."],
   [/already registered/i, "Konto z tym adresem e-mail już istnieje."],
@@ -801,7 +806,18 @@ function catSlices(txs, categories, toMain, limit = 5) {
   return arr;
 }
 
-function Dashboard({ data, helpers, go, update, onEditTx, onDeleteTx }) {
+function PinDigits({ value, onChange, error, autoFocus }) {
+  return (
+    <input
+      className={`input ${error ? "err" : ""}`} inputMode="numeric" autoComplete="one-time-code"
+      style={{ fontSize: 28, fontWeight: 800, textAlign: "center", letterSpacing: "0.5em", padding: "14px 10px 14px calc(10px + 0.5em)" }}
+      placeholder="••••" value={value} autoFocus={autoFocus}
+      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
+    />
+  );
+}
+
+function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDeleteTx }) {
   const { toMain, main } = helpers;
   const now = new Date();
   const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -820,6 +836,48 @@ function Dashboard({ data, helpers, go, update, onEditTx, onDeleteTx }) {
   const slices = catSlices(monthTx, data.categories, toMain);
   const trend = (cur, prv) => (prv > 0 ? ((cur - prv) / prv) * 100 : null);
   const hidden = !!data.settings.hideBalance;
+  const [pinSheet, setPinSheet] = useState(null); // "setup" | "enter" | "forgot"
+  const [pin1, setPin1] = useState(""); const [pin2, setPin2] = useState("");
+  const [pinTry, setPinTry] = useState(""); const [pinErr, setPinErr] = useState("");
+  const [fpPass, setFpPass] = useState(""); const [fpBusy, setFpBusy] = useState(false);
+  const openPinSheet = (which) => { setPin1(""); setPin2(""); setPinTry(""); setPinErr(""); setFpPass(""); setPinSheet(which); };
+
+  const toggleIncognito = () => {
+    if (!hidden) {
+      if (!data.settings.incognitoPinHash) openPinSheet("setup");
+      else { update((d) => ({ ...d, settings: { ...d.settings, hideBalance: true } })); toast("Tryb incognito włączony"); }
+    } else openPinSheet("enter");
+  };
+
+  const savePinAndEnable = async () => {
+    if (!/^\d{4}$/.test(pin1)) return setPinErr("Kod musi składać się z 4 cyfr.");
+    if (pin1 !== pin2) return setPinErr("Kody różnią się od siebie — wpisz je ponownie.");
+    const hash = await sha256(pin1);
+    update((d) => ({ ...d, settings: { ...d.settings, incognitoPinHash: hash, hideBalance: true } }));
+    setPinSheet(null); toast("Kod ustawiony · tryb incognito włączony");
+  };
+
+  const tryDisable = async () => {
+    if (!/^\d{4}$/.test(pinTry)) return setPinErr("Wpisz 4-cyfrowy kod.");
+    const hash = await sha256(pinTry);
+    if (hash !== data.settings.incognitoPinHash) { setPinTry(""); return setPinErr("Nieprawidłowy kod — spróbuj ponownie."); }
+    update((d) => ({ ...d, settings: { ...d.settings, hideBalance: false } }));
+    setPinSheet(null); toast("Tryb incognito wyłączony");
+  };
+
+  const forgotPin = async () => {
+    if (!fpPass) return setPinErr("Podaj hasło do konta.");
+    setFpBusy(true); setPinErr("");
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: userEmail, password: fpPass });
+      if (error) throw error;
+      update((d) => ({ ...d, settings: { ...d.settings, incognitoPinHash: null, hideBalance: false } }));
+      setPinSheet(null); toast("Kod zresetowany · tryb incognito wyłączony");
+    } catch {
+      setPinErr("Nieprawidłowe hasło do konta.");
+    } finally { setFpBusy(false); }
+  };
+
   const prevBal = pInc - pExp, curBal = inc - exp;
   const balPct = prevBal !== 0 ? ((curBal - prevBal) / Math.abs(prevBal)) * 100 : null;
 
@@ -849,8 +907,8 @@ function Dashboard({ data, helpers, go, update, onEditTx, onDeleteTx }) {
         <div style={{ position: "relative" }}>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
             <div style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)" }}>Saldo całkowite</div>
-            <button className="btn btn-ghost" style={{ padding: 8, borderRadius: 12 }} aria-label={hidden ? "Pokaż saldo" : "Ukryj saldo"}
-              onClick={() => update((d) => ({ ...d, settings: { ...d.settings, hideBalance: !d.settings.hideBalance } }))}>
+            <button className="btn btn-ghost" style={{ padding: 8, borderRadius: 12 }} aria-label={hidden ? "Wyłącz tryb incognito" : "Włącz tryb incognito"}
+              onClick={toggleIncognito}>
               {hidden ? <EyeOff size={17} /> : <Eye size={17} />}
             </button>
           </div>
@@ -932,6 +990,47 @@ function Dashboard({ data, helpers, go, update, onEditTx, onDeleteTx }) {
           <button className="btn btn-ghost" style={{ width: "100%", marginTop: 14, fontSize: 13 }} onClick={() => go("stats")}>Pełny podział w Statystykach</button>
         </div>
       </div>
+
+      <Sheet open={pinSheet === "setup"} onClose={() => setPinSheet(null)} title="Zabezpiecz tryb incognito">
+        <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 16 }}>
+          Tryb incognito rozmywa wszystkie kwoty w aplikacji — przydaje się, gdy ktoś zagląda Ci przez ramię.
+          Zanim go pierwszy raz włączysz, ustaw <b style={{ color: "var(--text)" }}>4-cyfrowy kod</b>: będzie wymagany
+          do <b style={{ color: "var(--text)" }}>wyłączenia</b> trybu, żeby nikt poza Tobą nie mógł odsłonić Twoich finansów.
+        </p>
+        <Field label="Wybierz kod (4 cyfry)"><PinDigits value={pin1} onChange={(v) => { setPin1(v); setPinErr(""); }} error={pinErr} autoFocus /></Field>
+        <Field label="Powtórz kod" error={pinErr}><PinDigits value={pin2} onChange={(v) => { setPin2(v); setPinErr(""); }} error={pinErr} /></Field>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPinSheet(null)}>Anuluj</button>
+          <button className="btn btn-primary" style={{ flex: 2 }} onClick={savePinAndEnable}>Ustaw kod i włącz</button>
+        </div>
+      </Sheet>
+
+      <Sheet open={pinSheet === "enter"} onClose={() => setPinSheet(null)} title="Wyłącz tryb incognito">
+        <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 16 }}>
+          Podaj 4-cyfrowy kod, aby odsłonić kwoty.
+        </p>
+        <Field label="Kod" error={pinErr}><PinDigits value={pinTry} onChange={(v) => { setPinTry(v); setPinErr(""); }} error={pinErr} autoFocus /></Field>
+        <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPinSheet(null)}>Anuluj</button>
+          <button className="btn btn-primary" style={{ flex: 2 }} onClick={tryDisable}>Wyłącz incognito</button>
+        </div>
+        <button className="btn btn-ghost" style={{ width: "100%", fontSize: 12.5 }} onClick={() => openPinSheet("forgot")}>Nie pamiętam kodu</button>
+      </Sheet>
+
+      <Sheet open={pinSheet === "forgot"} onClose={() => setPinSheet(null)} title="Reset kodu incognito">
+        <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 16 }}>
+          Potwierdź tożsamość <b style={{ color: "var(--text)" }}>hasłem do konta</b> — kod zostanie usunięty,
+          a tryb incognito wyłączony. Przy następnym włączeniu ustawisz nowy kod.
+        </p>
+        <Field label="Hasło do konta" error={pinErr}>
+          <input type="password" className={`input ${pinErr ? "err" : ""}`} value={fpPass} autoFocus
+            onChange={(e) => { setFpPass(e.target.value); setPinErr(""); }} onKeyDown={(e) => e.key === "Enter" && forgotPin()} />
+        </Field>
+        <div style={{ display: "flex", gap: 10 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setPinSheet(null)}>Anuluj</button>
+          <button className="btn btn-danger-solid" style={{ flex: 2 }} disabled={fpBusy} onClick={forgotPin}>{fpBusy ? "Sprawdzam…" : "Zresetuj kod"}</button>
+        </div>
+      </Sheet>
     </div>
   );
 }
@@ -2534,7 +2633,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
       </div>
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 17 · baza Supabase
+        <br />Sakwa · kompilacja 18 · baza Supabase
       </p>
     </div>
   );
@@ -2766,11 +2865,25 @@ function Auth({ onAuthed }) {
   const [busy, setBusy] = useState(false);
   const [info, setInfo] = useState("");
 
+  const passwordProblems = (p) => {
+    const issues = [];
+    if (!p || p.length < 8) issues.push("min. 8 znaków");
+    if (!/[a-ząćęłńóśźż]/.test(p || "")) issues.push("mała litera");
+    if (!/[A-ZĄĆĘŁŃÓŚŹŻ]/.test(p || "")) issues.push("wielka litera");
+    if (!/[0-9]/.test(p || "")) issues.push("cyfra");
+    return issues;
+  };
+
   const submit = async () => {
     const e = {};
     if (!/^\S+@\S+\.\S+$/.test(email.trim())) e.email = "Podaj prawidłowy adres e-mail.";
-    if (!pass || pass.length < 6) e.pass = "Hasło musi mieć co najmniej 6 znaków.";
-    if (mode === "register" && !name.trim()) e.name = "Podaj nazwę wyświetlaną.";
+    if (mode === "register") {
+      const issues = passwordProblems(pass);
+      if (issues.length) e.pass = "Hasło nie spełnia wymagań: " + issues.join(", ") + ".";
+      if (!name.trim()) e.name = "Podaj nazwę wyświetlaną.";
+    } else if (!pass) {
+      e.pass = "Podaj hasło.";
+    }
     setErrs(e); setInfo("");
     if (Object.keys(e).length) return;
     setBusy(true);
@@ -2781,6 +2894,12 @@ function Auth({ onAuthed }) {
           options: { data: { display_name: name.trim() }, emailRedirectTo: window.location.origin },
         });
         if (error) throw error;
+        // Supabase (przy włączonym potwierdzaniu e-maila) nie zwraca błędu dla zajętego adresu —
+        // zdradza go pusta lista identities. Wyłapujemy to jawnie:
+        if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+          setErrs({ email: "Konto z tym adresem e-mail już istnieje. Zaloguj się lub użyj funkcji resetu hasła." });
+          return;
+        }
         if (data.session?.user) onAuthed(data.session.user);
         else setInfo("Konto utworzone! Sprawdź skrzynkę e-mail i kliknij link potwierdzający, a potem zaloguj się.");
       } else {
@@ -2816,8 +2935,13 @@ function Auth({ onAuthed }) {
           <input type="email" className={`input ${errs.email ? "err" : ""}`} placeholder="ty@przyklad.pl" autoCapitalize="none" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
         <Field label="Hasło" error={errs.pass}>
-          <input type="password" className={`input ${errs.pass ? "err" : ""}`} placeholder="min. 6 znaków" autoComplete={mode === "register" ? "new-password" : "current-password"} value={pass}
+          <input type="password" className={`input ${errs.pass ? "err" : ""}`} placeholder={mode === "register" ? "silne hasło" : "twoje hasło"} autoComplete={mode === "register" ? "new-password" : "current-password"} value={pass}
             onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
+          {mode === "register" && !errs.pass && (
+            <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
+              Min. 8 znaków, w tym mała i wielka litera oraz cyfra.
+            </div>
+          )}
         </Field>
         {info && <p style={{ color: "var(--accent)", fontSize: 13, fontWeight: 700, lineHeight: 1.5, marginBottom: 12 }}>{info}</p>}
         <button className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} disabled={busy} onClick={submit}>
@@ -3412,7 +3536,7 @@ export default function App() {
   const navOrder = normalizeNav(data.settings.navOrder).filter((id) => NAV_META[id]);
   const content = (() => {
     switch (view) {
-      case "dashboard": return <Dashboard data={data} helpers={helpers} go={go} update={update} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
+      case "dashboard": return <Dashboard data={data} helpers={helpers} go={go} update={update} toast={toast} userEmail={user?.login} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "history": return <History data={data} helpers={helpers} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "stats": return <Stats data={data} helpers={helpers} go={go} update={update} onGenerateReport={generateReport} />;
       case "reports": return <Reports key={reportRange ? reportRange.from + reportRange.to : "r"} data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} presetRange={reportRange} />;
@@ -3453,15 +3577,17 @@ export default function App() {
             })}
             <div style={{ flex: 1 }} />
             {user && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}>
-                <div style={{ width: 34, height: 34, borderRadius: 12, background: user.avatarColor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14 }}>
+              <button className="nav-item" aria-label="Otwórz profil"
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}
+                onClick={() => { setView("settings"); setSettingsSub("profile"); scrollTopAll(); }}>
+                <div style={{ width: 34, height: 34, borderRadius: 12, background: user.avatarColor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
                   {user.name.charAt(0).toUpperCase()}
                 </div>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user.name}</div>
+                <div style={{ minWidth: 0, textAlign: "left" }}>
+                  <div style={{ fontWeight: 800, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "var(--text)" }}>{user.name}</div>
                   <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700 }}>@{user.login}</div>
                 </div>
-              </div>
+              </button>
             )}
           </aside>
         )}
