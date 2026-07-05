@@ -13,6 +13,7 @@ import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
   PieChart, Pie, Cell, AreaChart, Area, CartesianGrid, LineChart, Line
 } from "recharts";
+import { supabase } from "./supabase";
 
 /* ---------------- constants ---------------- */
 
@@ -89,25 +90,37 @@ const emptyData = () => ({
   settings: { mainCurrency: "PLN", rates: { ...DEFAULT_RATES }, theme: "dark", navOrder: DEFAULT_NAV },
 });
 
-/* ---------------- storage ---------------- */
+/* ---------------- storage: Supabase (dane) + localStorage (tylko motyw) ---------------- */
 
-const memFallback = new Map();
-const hasStorage = () => typeof window !== "undefined" && !!window.storage;
-const store = {
-  async get(key) {
-    if (!hasStorage()) return memFallback.has(key) ? JSON.parse(memFallback.get(key)) : null;
-    try { const r = await window.storage.get(key); return r ? JSON.parse(r.value) : null; }
-    catch { return null; }
-  },
-  async set(key, value) {
-    if (!hasStorage()) { memFallback.set(key, JSON.stringify(value)); return; }
-    try { await window.storage.set(key, JSON.stringify(value)); }
-    catch (e) { console.error("storage.set failed", e); }
-  },
-  async del(key) {
-    if (!hasStorage()) { memFallback.delete(key); return; }
-    try { await window.storage.delete(key); } catch {}
-  },
+const THEME_LS_KEY = "sakwa-theme";
+const loadLocalTheme = () => { try { return localStorage.getItem(THEME_LS_KEY); } catch { return null; } };
+const saveLocalTheme = (id) => { try { localStorage.setItem(THEME_LS_KEY, id); } catch {} };
+
+async function dbLoad(userId) {
+  const { data: row, error } = await supabase
+    .from("user_data").select("data").eq("user_id", userId).maybeSingle();
+  if (error) throw error;
+  return row?.data || null;
+}
+async function dbSave(userId, data) {
+  const { error } = await supabase
+    .from("user_data")
+    .upsert({ user_id: userId, data, updated_at: new Date().toISOString() });
+  if (error) throw error;
+}
+
+const AUTH_ERRORS = [
+  [/invalid login credentials/i, "Nieprawidłowy e-mail lub hasło."],
+  [/already registered/i, "Konto z tym adresem e-mail już istnieje."],
+  [/password should be at least/i, "Hasło musi mieć co najmniej 6 znaków."],
+  [/email not confirmed/i, "Potwierdź adres e-mail (link w skrzynce), a potem zaloguj się."],
+  [/rate limit/i, "Zbyt wiele prób — odczekaj chwilę."],
+];
+const authErrPl = (e) => {
+  const m = e?.message || "";
+  for (const [re, msg] of AUTH_ERRORS) if (re.test(m)) return msg;
+  if (/fetch|network/i.test(m)) return "Brak połączenia z bazą danych — sprawdź internet.";
+  return "Coś poszło nie tak: " + m;
 };
 
 /* ---------------- utils ---------------- */
@@ -2518,7 +2531,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
       </div>
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 15
+        <br />Sakwa · kompilacja 16 · baza Supabase
       </p>
     </div>
   );
@@ -2741,29 +2754,42 @@ function ProfileManager({ user, updateUser, toast, back }) {
 
 /* ---------------- auth ---------------- */
 
-function Auth({ users, onLogin, onRegister }) {
+function Auth({ onAuthed }) {
   const [mode, setMode] = useState("login");
-  const [login, setLogin] = useState("");
+  const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [name, setName] = useState("");
   const [errs, setErrs] = useState({});
-  const submit = () => {
+  const [busy, setBusy] = useState(false);
+  const [info, setInfo] = useState("");
+
+  const submit = async () => {
     const e = {};
-    if (!login.trim()) e.login = "Podaj login.";
-    if (!pass) e.pass = "Podaj hasło.";
-    if (mode === "register") {
-      if (!name.trim()) e.name = "Podaj nazwę wyświetlaną.";
-      if (login.trim() && users.some((u) => u.login === login.trim())) e.login = "Ten login jest już zajęty.";
-      if (pass && pass.length < 4) e.pass = "Hasło musi mieć co najmniej 4 znaki.";
-    } else {
-      const u = users.find((x) => x.login === login.trim());
-      if (login.trim() && pass && (!u || u.pass !== pass)) e.pass = "Nieprawidłowy login lub hasło.";
-    }
-    setErrs(e);
+    if (!/^\S+@\S+\.\S+$/.test(email.trim())) e.email = "Podaj prawidłowy adres e-mail.";
+    if (!pass || pass.length < 6) e.pass = "Hasło musi mieć co najmniej 6 znaków.";
+    if (mode === "register" && !name.trim()) e.name = "Podaj nazwę wyświetlaną.";
+    setErrs(e); setInfo("");
     if (Object.keys(e).length) return;
-    if (mode === "register") onRegister({ id: uid(), login: login.trim(), pass, name: name.trim(), avatarColor: AVATAR_COLORS[Math.floor(Math.random() * AVATAR_COLORS.length)] });
-    else onLogin(users.find((x) => x.login === login.trim()));
+    setBusy(true);
+    try {
+      if (mode === "register") {
+        const { data, error } = await supabase.auth.signUp({
+          email: email.trim(), password: pass,
+          options: { data: { display_name: name.trim() } },
+        });
+        if (error) throw error;
+        if (data.session?.user) onAuthed(data.session.user);
+        else setInfo("Konto utworzone! Sprawdź skrzynkę e-mail i kliknij link potwierdzający, a potem zaloguj się.");
+      } else {
+        const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password: pass });
+        if (error) throw error;
+        onAuthed(data.user);
+      }
+    } catch (err) {
+      setErrs({ pass: authErrPl(err) });
+    } finally { setBusy(false); }
   };
+
   return (
     <div className="auth-wrap">
       <div className="card fade-in" style={{ width: "min(420px, 100%)", padding: 28 }}>
@@ -2772,10 +2798,10 @@ function Auth({ users, onLogin, onRegister }) {
             <Wallet size={27} />
           </div>
           <div style={{ fontSize: 24, fontWeight: 800, letterSpacing: "-0.02em" }}>Sakwa</div>
-          <div style={{ color: "var(--muted)", fontWeight: 700, fontSize: 13 }}>Twoje finanse, lokalnie i offline</div>
+          <div style={{ color: "var(--muted)", fontWeight: 700, fontSize: 13 }}>Twoje finanse, bezpiecznie w chmurze</div>
         </div>
         <div style={{ marginBottom: 18 }}>
-          <Seg value={mode} onChange={(m) => { setMode(m); setErrs({}); }}
+          <Seg value={mode} onChange={(m) => { setMode(m); setErrs({}); setInfo(""); }}
             options={[{ value: "login", label: "Logowanie" }, { value: "register", label: "Rejestracja" }]} />
         </div>
         {mode === "register" && (
@@ -2783,18 +2809,19 @@ function Auth({ users, onLogin, onRegister }) {
             <input className={`input ${errs.name ? "err" : ""}`} placeholder="np. Ania" value={name} onChange={(e) => setName(e.target.value)} />
           </Field>
         )}
-        <Field label="Login" error={errs.login}>
-          <input className={`input ${errs.login ? "err" : ""}`} placeholder="login" autoCapitalize="none" value={login} onChange={(e) => setLogin(e.target.value)} />
+        <Field label="E-mail" error={errs.email}>
+          <input type="email" className={`input ${errs.email ? "err" : ""}`} placeholder="ty@przyklad.pl" autoCapitalize="none" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
         </Field>
         <Field label="Hasło" error={errs.pass}>
-          <input type="password" className={`input ${errs.pass ? "err" : ""}`} placeholder="••••••" value={pass}
+          <input type="password" className={`input ${errs.pass ? "err" : ""}`} placeholder="min. 6 znaków" autoComplete={mode === "register" ? "new-password" : "current-password"} value={pass}
             onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
         </Field>
-        <button className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={submit}>
-          {mode === "login" ? "Zaloguj się" : "Utwórz konto"}
+        {info && <p style={{ color: "var(--accent)", fontSize: 13, fontWeight: 700, lineHeight: 1.5, marginBottom: 12 }}>{info}</p>}
+        <button className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} disabled={busy} onClick={submit}>
+          {busy ? "Chwileczkę…" : mode === "login" ? "Zaloguj się" : "Utwórz konto"}
         </button>
         <p style={{ textAlign: "center", color: "var(--muted)", fontSize: 12, fontWeight: 600, marginTop: 16, lineHeight: 1.5 }}>
-          Konto startowe: <b>admin</b> / <b>admin</b>. Dane każdego konta są przechowywane osobno, lokalnie na tym urządzeniu.
+          Twoje dane są zapisywane w zabezpieczonej bazie i dostępne z każdego urządzenia po zalogowaniu.
         </p>
       </div>
     </div>
@@ -3078,7 +3105,7 @@ function ThemePicker({ open, onClose, current, onPick }) {
 
 export default function App() {
   const [phase, setPhase] = useState("loading");
-  const [users, setUsers] = useState([]);
+  const [sessionUser, setSessionUser] = useState(null);
   const [userId, setUserId] = useState(null);
   const [data, setData] = useState(null);
   const [view, setView] = useState("dashboard");
@@ -3091,7 +3118,12 @@ export default function App() {
   const [reportRange, setReportRange] = useState(null);
   const toastTimer = useRef(null);
   const isDesktop = useMedia("(min-width: 1024px)");
-  const user = users.find((u) => u.id === userId);
+  const user = sessionUser ? {
+    id: sessionUser.id,
+    login: sessionUser.email,
+    name: data?.profile?.name || sessionUser.user_metadata?.display_name || sessionUser.email.split("@")[0],
+    avatarColor: data?.profile?.avatarColor || AVATAR_COLORS[1],
+  } : null;
 
   /* toast helper */
   const toast = useCallback((msg, action, onAction) => {
@@ -3186,27 +3218,41 @@ export default function App() {
     document.body.style.background = t.bg;
   }, [data?.settings?.theme]);
 
-  /* boot: load users + session */
+  /* boot: restore Supabase session */
   useEffect(() => {
     (async () => {
-      let u = await store.get("fin:users");
-      if (!u || !u.length) {
-        u = [{ id: "u-admin", login: "admin", pass: "admin", name: "Admin", avatarColor: AVATAR_COLORS[1] }];
-        await store.set("fin:users", u);
+      try {
+        const { data: s } = await supabase.auth.getSession();
+        const su = s?.session?.user;
+        if (su) await enterApp(su);
+        else setPhase("auth");
+      } catch (e) {
+        console.error(e);
+        setPhase("auth");
       }
-      setUsers(u);
-      const s = await store.get("fin:session");
-      if (s?.userId && u.some((x) => x.id === s.userId)) {
-        await loadUserData(s.userId);
-        setUserId(s.userId);
-        setPhase("app");
-        requestAnimationFrame(() => scrollTopAll());
-      } else setPhase("auth");
     })();
   }, []); // eslint-disable-line
 
-  async function loadUserData(uid_) {
-    let d = await store.get(`fin:data:${uid_}`);
+  async function enterApp(su) {
+    setSessionUser(su);
+    setUserId(su.id);
+    await loadUserData(su);
+    setView("dashboard"); setSettingsSub(null);
+    setPhase("app");
+    requestAnimationFrame(() => {
+      scrollTopAll();
+      setTimeout(() => window.dispatchEvent(new Event("resize")), 120);
+    });
+  }
+
+  async function loadUserData(su) {
+    let d = null;
+    try {
+      d = await dbLoad(su.id);
+    } catch (e) {
+      console.error("dbLoad", e);
+      setTimeout(() => toast("Nie udało się pobrać danych z bazy — sprawdź połączenie"), 400);
+    }
     if (!d) d = emptyData();
     d = { ...emptyData(), ...d, settings: { ...emptyData().settings, ...(d.settings || {}), rates: { ...DEFAULT_RATES, ...(d.settings?.rates || {}) } } };
     // migrate old flat budgets ({catId: limit}) to per-month ({YYYY-MM: {catId: limit}})
@@ -3214,6 +3260,16 @@ export default function App() {
       const nowD = new Date();
       const curYM = `${nowD.getFullYear()}-${String(nowD.getMonth() + 1).padStart(2, "0")}`;
       d = { ...d, budgets: { [curYM]: d.budgets } };
+    }
+    // profile lives in DB data; theme is device-local
+    d.profile = {
+      name: su.user_metadata?.display_name || su.email.split("@")[0],
+      avatarColor: AVATAR_COLORS[1],
+      ...(d.profile || {}),
+    };
+    const localTheme = loadLocalTheme();
+    if (localTheme && THEMES.some((t) => t.id === localTheme)) {
+      d = { ...d, settings: { ...d.settings, theme: localTheme } };
     }
     const generated = generateRecurringTx(d);
     if (generated.length) d = { ...d, transactions: [...d.transactions, ...generated] };
@@ -3226,47 +3282,43 @@ export default function App() {
   useEffect(() => {
     if (!data || !userId) return;
     clearTimeout(saveTimer.current);
-    saveTimer.current = setTimeout(() => { store.set(`fin:data:${userId}`, data); }, 400);
+    saveTimer.current = setTimeout(() => {
+      dbSave(userId, data).catch((e) => {
+        console.error("dbSave", e);
+        toast("Błąd zapisu do bazy — zmiany mogą nie zostać zachowane");
+      });
+    }, 600);
     return () => clearTimeout(saveTimer.current);
   }, [data, userId]);
 
   const update = useCallback((fn) => setData((d) => fn(d)), []);
 
-  const login = async (u) => {
-    await loadUserData(u.id);
-    setUserId(u.id);
-    await store.set("fin:session", { userId: u.id });
-    setView("dashboard"); setSettingsSub(null);
-    setPhase("app");
-    requestAnimationFrame(() => {
-      scrollTopAll();
-      setTimeout(() => window.dispatchEvent(new Event("resize")), 120);
-    });
-  };
-  const register = async (u) => {
-    const next = [...users, u];
-    setUsers(next);
-    await store.set("fin:users", next);
-    await login(u);
-  };
+  /* theme is the only thing kept on-device */
+  useEffect(() => {
+    if (data?.settings?.theme) saveLocalTheme(data.settings.theme);
+  }, [data?.settings?.theme]);
+
   const logout = async () => {
-    if (data && userId) await store.set(`fin:data:${userId}`, data);
-    await store.del("fin:session");
-    setUserId(null); setData(null); setPhase("auth");
+    try { if (data && userId) await dbSave(userId, data); } catch {}
+    try { await supabase.auth.signOut(); } catch {}
+    setSessionUser(null); setUserId(null); setData(null); setPhase("auth");
     requestAnimationFrame(() => scrollTopAll());
   };
   const deleteAccount = async () => {
-    await store.del(`fin:data:${userId}`);
-    const next = users.filter((u) => u.id !== userId);
-    setUsers(next);
-    await store.set("fin:users", next);
-    await store.del("fin:session");
-    setUserId(null); setData(null); setPhase("auth");
+    try {
+      const { error } = await supabase.rpc("delete_user");
+      if (error) throw error;
+    } catch (e) {
+      console.error("delete_user rpc", e);
+      try { await supabase.from("user_data").delete().eq("user_id", userId); } catch {}
+      toast("Dane usunięte. Pełne usunięcie konta może wymagać funkcji delete_user w bazie.");
+    }
+    try { await supabase.auth.signOut(); } catch {}
+    setSessionUser(null); setUserId(null); setData(null); setPhase("auth");
+    requestAnimationFrame(() => scrollTopAll());
   };
-  const updateUser = async (patch) => {
-    const next = users.map((u) => (u.id === userId ? { ...u, ...patch } : u));
-    setUsers(next);
-    await store.set("fin:users", next);
+  const updateUser = (patch) => {
+    update((d) => ({ ...d, profile: { ...(d.profile || {}), ...patch } }));
   };
 
   /* currency helpers */
@@ -3331,7 +3383,7 @@ export default function App() {
       <div className="fin-root" data-theme="dark">
         <style>{CSS}</style>
         <div className="app-scroll">
-          <Auth users={users} onLogin={login} onRegister={register} />
+          <Auth onAuthed={enterApp} />
         </div>
       </div>
     );
