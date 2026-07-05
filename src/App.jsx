@@ -76,6 +76,9 @@ const themeBlock = (t) => `
   --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23${t.muted.slice(1)}' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
 }`;
 
+const CAME_FROM_EMAIL_LINK =
+  typeof window !== "undefined" && /type=signup|type=email|type=magiclink/.test(window.location.hash || "");
+
 const DEFAULT_NAV = ["dashboard", "history", "stats", "more", "fuel", "goals", "budgets", "reports", "settings"];
 const normalizeNav = (order) => {
   const rest = (order || DEFAULT_NAV).filter((id) => id !== "more" && DEFAULT_NAV.includes(id));
@@ -2531,7 +2534,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
       </div>
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 16 · baza Supabase
+        <br />Sakwa · kompilacja 17 · baza Supabase
       </p>
     </div>
   );
@@ -3105,6 +3108,8 @@ function ThemePicker({ open, onClose, current, onPick }) {
 
 export default function App() {
   const [phase, setPhase] = useState("loading");
+  const [verifiedSplash, setVerifiedSplash] = useState(false);
+  const enteredRef = useRef(null);
   const [sessionUser, setSessionUser] = useState(null);
   const [userId, setUserId] = useState(null);
   const [data, setData] = useState(null);
@@ -3218,8 +3223,12 @@ export default function App() {
     document.body.style.background = t.bg;
   }, [data?.settings?.theme]);
 
-  /* boot: restore Supabase session */
+  /* boot: restore session + react to auth events (also fired cross-tab,
+     e.g. when the e-mail confirmation link logs in from another tab) */
   useEffect(() => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === "SIGNED_IN" && session?.user) enterApp(session.user, { viaEvent: true });
+    });
     (async () => {
       try {
         const { data: s } = await supabase.auth.getSession();
@@ -3231,14 +3240,22 @@ export default function App() {
         setPhase("auth");
       }
     })();
+    return () => sub.subscription.unsubscribe();
   }, []); // eslint-disable-line
 
-  async function enterApp(su) {
+  async function enterApp(su, opts = {}) {
+    if (enteredRef.current === su.id) return; // auth event + manual call — run once
+    enteredRef.current = su.id;
     setSessionUser(su);
     setUserId(su.id);
     await loadUserData(su);
     setView("dashboard"); setSettingsSub(null);
     setPhase("app");
+    if (CAME_FROM_EMAIL_LINK) {
+      setVerifiedSplash(true);
+    } else if (opts.viaEvent) {
+      setTimeout(() => toast("✅ Konto zweryfikowane — zalogowano automatycznie"), 350);
+    }
     requestAnimationFrame(() => {
       scrollTopAll();
       setTimeout(() => window.dispatchEvent(new Event("resize")), 120);
@@ -3301,6 +3318,7 @@ export default function App() {
   const logout = async () => {
     try { if (data && userId) await dbSave(userId, data); } catch {}
     try { await supabase.auth.signOut(); } catch {}
+    enteredRef.current = null;
     setSessionUser(null); setUserId(null); setData(null); setPhase("auth");
     requestAnimationFrame(() => scrollTopAll());
   };
@@ -3314,6 +3332,7 @@ export default function App() {
       toast("Dane usunięte. Pełne usunięcie konta może wymagać funkcji delete_user w bazie.");
     }
     try { await supabase.auth.signOut(); } catch {}
+    enteredRef.current = null;
     setSessionUser(null); setUserId(null); setData(null); setPhase("auth");
     requestAnimationFrame(() => scrollTopAll());
   };
@@ -3505,6 +3524,29 @@ export default function App() {
       </Sheet>
 
       <ToTopButton />
+
+      {verifiedSplash && (
+        <>
+          <div className="overlay no-print" style={{ zIndex: 1200 }} />
+          <div className="card no-print fade-in" style={{ position: "fixed", zIndex: 1210, left: "50%", top: "50%", transform: "translate(-50%, -50%)", width: "min(400px, calc(100vw - 32px))", padding: "34px 26px", textAlign: "center" }}>
+            <div className="icon-badge" style={{ width: 64, height: 64, borderRadius: 22, background: "var(--accent-dim)", color: "var(--accent)", margin: "0 auto 16px" }}>
+              <Check size={32} strokeWidth={3} />
+            </div>
+            <div style={{ fontSize: 21, fontWeight: 800, letterSpacing: "-0.02em", marginBottom: 10 }}>E-mail potwierdzony!</div>
+            <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 22 }}>
+              Twoje konto jest aktywne i zostałeś zalogowany. Jeśli rejestrowałeś się w innej karcie tej przeglądarki —
+              tamta karta również właśnie się zalogowała, więc tę możesz spokojnie zamknąć.
+            </p>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => {
+                window.close();
+                setTimeout(() => toast("Przeglądarka nie pozwala zamknąć tej karty automatycznie — zamknij ją ręcznie"), 300);
+              }}>Zamknij kartę</button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => setVerifiedSplash(false)}>Przejdź do aplikacji</button>
+            </div>
+          </div>
+        </>
+      )}
 
       <Confirm conf={conf} onDone={confirmDone} />
 
