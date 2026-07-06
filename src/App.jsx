@@ -8,7 +8,7 @@ import {
   RefreshCw, LogOut, UserRound, Palette, Coins, Repeat, CarFront, Check, Printer,
   Droplets, Gauge, MapPin, Sun, Moon, Percent, Landmark, Music, Baby, Bus,
   ChevronUp, ChevronDown, Menu, RotateCcw, Lock, Eye, EyeOff, ArrowUp, Sparkles, AlertTriangle,
-  ThumbsUp, ThumbsDown, Minus
+  ThumbsUp, ThumbsDown, Minus, CalendarDays
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
@@ -82,7 +82,7 @@ const CAME_FROM_EMAIL_LINK =
 const CAME_FROM_RECOVERY =
   typeof window !== "undefined" && /type=recovery/.test(window.location.hash || "");
 
-const DEFAULT_NAV = ["dashboard", "history", "stats", "more", "fuel", "goals", "budgets", "reports", "settings"];
+const DEFAULT_NAV = ["dashboard", "history", "stats", "more", "summary", "fuel", "goals", "budgets", "reports", "settings"];
 const normalizeNav = (order) => {
   const rest = (order || DEFAULT_NAV).filter((id) => id !== "more" && DEFAULT_NAV.includes(id));
   for (const id of DEFAULT_NAV) if (id !== "more" && !rest.includes(id)) rest.push(id);
@@ -361,6 +361,14 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   position: fixed; bottom: var(--vv-off, 0px); left: 0; right: 0; z-index: 40;
   transition: transform .28s cubic-bezier(.22,.9,.3,1);
 }
+.pin-box {
+  width: 54px; height: 58px; border-radius: 14px; background: var(--surface2);
+  border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center;
+  font-size: 25px; font-weight: 800; transition: border-color .15s ease;
+}
+.pin-box.active { border-color: var(--accent); }
+.pin-box.err { border-color: var(--neg); }
+.pin-hidden { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; border: none; background: none; }
 .bottom-nav.nav-hidden { transform: translateY(calc(100% + var(--vv-off, 0px) + 26px)); }
 .bottom-nav {
   background: color-mix(in srgb, var(--surface) 94%, transparent);
@@ -874,13 +882,33 @@ function catSlices(txs, categories, toMain, limit = 5) {
 }
 
 function PinDigits({ value, onChange, error, autoFocus }) {
+  const [reveal, setReveal] = useState(false);
+  const tRef = useRef(null);
+  const inpRef = useRef(null);
+  useEffect(() => () => clearTimeout(tRef.current), []);
+  const handle = (raw) => {
+    const nv = raw.replace(/\D/g, "").slice(0, 4);
+    const grew = nv.length > value.length;
+    onChange(nv);
+    clearTimeout(tRef.current);
+    if (grew) {
+      setReveal(true);
+      tRef.current = setTimeout(() => setReveal(false), 650);
+    } else setReveal(false);
+  };
   return (
-    <input
-      className={`input ${error ? "err" : ""}`} inputMode="numeric" autoComplete="one-time-code"
-      style={{ fontSize: 28, fontWeight: 800, textAlign: "center", letterSpacing: "0.5em", padding: "14px 10px 14px calc(10px + 0.5em)" }}
-      placeholder="••••" value={value} autoFocus={autoFocus}
-      onChange={(e) => onChange(e.target.value.replace(/\D/g, "").slice(0, 4))}
-    />
+    <div style={{ position: "relative", cursor: "text" }} onClick={() => inpRef.current?.focus()}>
+      <div style={{ display: "flex", gap: 10, justifyContent: "center" }}>
+        {[0, 1, 2, 3].map((i) => (
+          <div key={i} className={`pin-box ${error ? "err" : ""} ${i === Math.min(value.length, 3) && value.length < 4 ? "active" : ""}`}>
+            {i < value.length ? (i === value.length - 1 && reveal ? value[i] : "•") : ""}
+          </div>
+        ))}
+      </div>
+      <input ref={inpRef} className="pin-hidden" inputMode="numeric" autoComplete="one-time-code"
+        aria-label="Kod PIN" value={value} autoFocus={autoFocus}
+        onChange={(e) => handle(e.target.value)} />
+    </div>
   );
 }
 
@@ -2713,7 +2741,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 22 · baza Supabase
+        <br />Sakwa · kompilacja 23 · baza Supabase
       </p>
     </div>
   );
@@ -3331,6 +3359,7 @@ const TILE_EXTRA = {
   fuel: { desc: "Auta, tankowania, spalanie", color: "#F97316" },
   goals: { desc: "Oszczędzanie na marzenia", color: "#34E0A1" },
   budgets: { desc: "Limity wydatków na miesiąc", color: "#FFD166" },
+  summary: { desc: "Miesiąc po miesiącu: wpłaty, wydatki, oszczędności", color: "#5EA0FF" },
   reports: { desc: "Podsumowania, historia, PDF", color: "#8B7CFF" },
   settings: { desc: "Kategorie, waluty, profil", color: "#4D9FFF" },
 };
@@ -3384,6 +3413,88 @@ function ToTopButton() {
 
 /* ---------------- root app ---------------- */
 
+function Summary({ data, helpers }) {
+  const { toMain, main } = helpers;
+  const now = new Date();
+  const curYear = now.getFullYear();
+  const firstTx = data.transactions.length ? [...data.transactions].sort((a, b) => a.date.localeCompare(b.date))[0].date : null;
+  const startISO = [data.profile?.createdAt, firstTx].filter(Boolean).sort()[0] || todayISO();
+  const startD = new Date(startISO);
+  const years = [];
+  for (let y = curYear; y >= startD.getFullYear(); y--) years.push(y);
+  const [year, setYear] = useState(curYear);
+
+  const monthFrom = year === startD.getFullYear() ? startD.getMonth() : 0;
+  const monthTo = year === curYear ? now.getMonth() : 11;
+  const rows = [];
+  for (let m = monthTo; m >= monthFrom; m--) {
+    const key = `${year}-${String(m + 1).padStart(2, "0")}`;
+    let inc = 0, exp = 0;
+    for (const t of data.transactions) {
+      if (ym(t.date) !== key) continue;
+      const v = toMain(t.amount, t.currency);
+      if (t.type === "income") inc += v; else exp += v;
+    }
+    rows.push({ m, key, inc, exp, saved: inc - exp });
+  }
+  const totInc = rows.reduce((s, r) => s + r.inc, 0);
+  const totExp = rows.reduce((s, r) => s + r.exp, 0);
+
+  const Cell = ({ label, value, color }) => (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 10.5, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.04em", marginBottom: 3 }}>{label}</div>
+      <div className="sens" style={{ fontSize: 15, fontWeight: 800, color, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{fmtMoney(value, main, true)}</div>
+    </div>
+  );
+
+  return (
+    <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <h1 className="page-title" style={{ margin: 0 }}>Podsumowanie</h1>
+        {years.length > 1 ? (
+          <select className="input" style={{ width: "auto", minWidth: 110, padding: "10px 14px" }} value={year} onChange={(e) => setYear(Number(e.target.value))}>
+            {years.map((y) => <option key={y} value={y}>{y}</option>)}
+          </select>
+        ) : (
+          <span className="chip" style={{ background: "var(--surface2)", color: "var(--muted)" }}>{year}</span>
+        )}
+      </div>
+
+      <div className="card" style={{ padding: 18 }}>
+        <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 10 }}>
+          Cały rok {year}{year === startD.getFullYear() ? ` · od założenia konta (${startISO})` : ""}
+        </div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+          <Cell label="Wpłaty" value={totInc} color="var(--pos)" />
+          <Cell label="Wydatki" value={totExp} color="var(--neg)" />
+          <Cell label="Zaoszczędzono" value={totInc - totExp} color={totInc - totExp >= 0 ? "var(--info)" : "var(--neg)"} />
+        </div>
+      </div>
+
+      <div className="card" style={{ padding: 6 }}>
+        {rows.map((r) => {
+          const isCur = year === curYear && r.m === now.getMonth();
+          return (
+            <div key={r.key} style={{ padding: "13px 14px", borderRadius: 14, background: isCur ? "var(--surface2)" : "transparent", marginBottom: 2 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+                <div style={{ fontWeight: 800, fontSize: 14 }}>
+                  {MONTHS_FULL[r.m]}
+                  {isCur && <span style={{ color: "var(--accent)", fontSize: 11, fontWeight: 800, marginLeft: 8 }}>bieżący</span>}
+                </div>
+              </div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+                <Cell label="Wpłaty" value={r.inc} color="var(--pos)" />
+                <Cell label="Wydatki" value={r.exp} color="var(--neg)" />
+                <Cell label="Zaoszczędzono" value={r.saved} color={r.saved >= 0 ? "var(--info)" : "var(--neg)"} />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 const NAV_META = {
   dashboard: { icon: Home, label: "Pulpit" },
   history: { icon: List, label: "Historia" },
@@ -3393,6 +3504,7 @@ const NAV_META = {
   fuel: { icon: Fuel, label: "Paliwo" },
   goals: { icon: Target, label: "Cele" },
   budgets: { icon: Landmark, label: "Budżety" },
+  summary: { icon: CalendarDays, label: "Podsumowanie" },
   settings: { icon: SettingsIcon, label: "Ustawienia" },
 };
 
@@ -3751,6 +3863,9 @@ export default function App() {
       avatarColor: AVATAR_COLORS[1],
       ...(d.profile || {}),
     };
+    if (!d.profile.createdAt) {
+      d.profile = { ...d.profile, createdAt: (su.created_at || "").slice(0, 10) || todayISO() };
+    }
     const localTheme = loadLocalTheme();
     if (localTheme && THEMES.some((t) => t.id === localTheme)) {
       d = { ...d, settings: { ...d.settings, theme: localTheme } };
@@ -3892,6 +4007,7 @@ export default function App() {
       case "fuel": return <Fuel_ data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} openRefuel={openRefuel} setOpenRefuel={setOpenRefuel} />;
       case "goals": return <Goals data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "budgets": return <Budgets data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
+      case "summary": return <Summary data={data} helpers={helpers} />;
       case "more": return <More go={go} data={data} />;
       case "settings": return <Settings_ data={data} user={user} update={update} updateUser={updateUser} go={go} toast={toast} confirm={confirm} onLogout={logout} onDeleteAccount={deleteAccount} sub={settingsSub} setSub={setSettingsSub} />;
       default: return null;
