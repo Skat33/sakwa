@@ -1459,7 +1459,6 @@ function Heatmap({ txs, toMain, monthISO, main }) {
 }
 
 function Stats({ data, helpers, go, update, toast }) {
-  const [genPreset, setGenPreset] = useState(null);
   const { toMain, main } = helpers;
   const [preset, setPreset] = useState("m");
   const [custom, setCustom] = useState({ from: `${todayISO().slice(0, 7)}-01`, to: todayISO() });
@@ -1558,7 +1557,7 @@ function Stats({ data, helpers, go, update, toast }) {
             {chartsReady ? <Donut slices={slices} centerLabel="Razem" centerValue={fmtMoney(exp, main, true)} /> : <div className="skeleton" style={{ height: 150 }} />}
           </div>
           <AiAnalysisCard data={data} txs={txs} helpers={helpers} update={update} rangeLabel={PRESETS.find((p) => p.id === preset)?.label || "własny zakres"} />
-          <ReportGenerator key={genPreset ? genPreset.n : "gen"} data={data} helpers={helpers} update={update} toast={toast} presetRange={genPreset} />
+          <ReportGenerator data={data} helpers={helpers} update={update} toast={toast} presetRange={null} />
           {data.goals.length > 0 && (
             <div className="card" style={{ padding: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -1578,12 +1577,7 @@ function Stats({ data, helpers, go, update, toast }) {
               })}
             </div>
           )}
-          <button className="btn btn-primary" onClick={() => {
-            setGenPreset({ ...range, n: Date.now() });
-            setTimeout(() => document.getElementById("report-generator")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
-          }}>
-            <FileText size={16} /> Generuj raport z tego zakresu
-          </button>
+
         </div>
       </div>
     </div>
@@ -2182,8 +2176,9 @@ function PayForm({ goal, dir, main, onPay, onClose }) {
 function Reports({ data, helpers, go, toast, confirm, update }) {
   const incognito = !!data.settings.hideBalance;
   const history = data.reports || [];
-  const openSnap = (h) => {
-    if (incognito) { toast("Tryb incognito aktywny — podgląd raportów jest zablokowany"); return; }
+  const [histView, setHistView] = useState(null);
+  const openPdf = (h) => {
+    if (incognito) { toast("Tryb incognito aktywny — otwieranie raportów jest zablokowane"); return; }
     if (!openSnapshotWindow(h)) toast("Przeglądarka zablokowała nowe okno — zezwól tej stronie na wyskakujące okna");
   };
   const delSnap = (e, h) => {
@@ -2194,6 +2189,7 @@ function Reports({ data, helpers, go, toast, confirm, update }) {
       danger: true, confirmLabel: "Usuń",
     }, () => {
       update((d) => ({ ...d, reports: (d.reports || []).filter((r) => r.id !== h.id) }));
+      setHistView(null);
       toast("Raport usunięty z historii");
     });
   };
@@ -2218,7 +2214,7 @@ function Reports({ data, helpers, go, toast, confirm, update }) {
           </div>
           <div className="tx-list">
             {history.map((h) => (
-              <div key={h.id} className="tx-row row-press" onClick={() => openSnap(h)} title="Otwórz szczegóły w nowym oknie">
+              <div key={h.id} className="tx-row row-press" onClick={() => setHistView(h)}>
                 <div className="icon-badge" style={{ background: "var(--violet)" + "22", color: "var(--violet)" }}><FileText size={18} /></div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 14 }}>{fmtDate(h.from)} – {fmtDate(h.to)}</div>
@@ -2233,10 +2229,67 @@ function Reports({ data, helpers, go, toast, confirm, update }) {
             ))}
           </div>
           <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11.5, marginTop: 10 }}>
-            Kliknięcie raportu otwiera pełne szczegóły w nowej karcie — stamtąd wydrukujesz go lub zapiszesz jako PDF.
+            Kliknij raport, aby zobaczyć szczegóły i otworzyć wersję PDF.
           </p>
         </div>
       )}
+
+      <Sheet open={!!histView} onClose={() => setHistView(null)} title="Szczegóły raportu" wide>
+        {histView && (
+          <>
+            <div style={{ color: "var(--muted)", fontWeight: 700, fontSize: 13, marginBottom: 14 }}>
+              {fmtDate(histView.from)} – {fmtDate(histView.to)} · waluta: {histView.main}
+              <br />wygenerowano {fmtDate(histView.createdAt.slice(0, 10))} o godz. {fmtTime(histView.createdAt)}
+            </div>
+            <div className="stat-grid" style={{ marginBottom: 16 }}>
+              <StatCard icon={ArrowUpRight} label="Przychody" value={fmtMoney(histView.inc, histView.main)} tone="pos" />
+              <StatCard icon={ArrowDownRight} label="Wydatki" value={fmtMoney(histView.exp, histView.main)} tone="neg" />
+              <StatCard icon={Wallet} label="Bilans" value={fmtMoney(histView.inc - histView.exp, histView.main)} tone="info" />
+              <StatCard icon={List} label="Transakcje" value={histView.count} />
+            </div>
+            {histView.aiNote && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}>
+                  <Sparkles size={15} style={{ color: "var(--violet)" }} /> Wniosek AI
+                </div>
+                <div className="card sens" style={{ padding: 14, background: "var(--surface2)", boxShadow: "none", fontSize: 13.5, fontWeight: 600, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{histView.aiNote}</div>
+              </div>
+            )}
+            {histView.slices.length > 0 && (
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ fontWeight: 800, marginBottom: 8 }}>Podział wydatków wg kategorii</div>
+                {histView.slices.map((s) => (
+                  <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--line)", fontSize: 13.5, fontWeight: 700 }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color }} />
+                    <span style={{ flex: 1 }}>{s.name}</span>
+                    <span style={{ color: "var(--muted)" }}>{histView.exp ? ((s.value / histView.exp) * 100).toFixed(1) : 0}%</span>
+                    <span className="sens" style={{ width: 110, textAlign: "right" }}>{fmtMoney(s.value, histView.main)}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div style={{ fontWeight: 800, marginBottom: 8 }}>Lista transakcji</div>
+            <div style={{ marginBottom: 16 }}>
+              {histView.rows.length === 0 ? <p style={{ color: "var(--muted)", fontWeight: 600 }}>Brak transakcji.</p> : histView.rows.map((r, i) => (
+                <div key={i} style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--line)", fontSize: 13, fontWeight: 600 }}>
+                  <span style={{ width: 82, color: "var(--muted)", flexShrink: 0 }}>{r.date}</span>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
+                  <span style={{ color: "var(--muted)", width: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.cat}</span>
+                  <span className="sens" style={{ width: 105, textAlign: "right", fontWeight: 800, color: r.type === "income" ? "var(--accent)" : "var(--neg)" }}>
+                    {r.type === "income" ? "+" : "−"}{fmtMoney(r.amt, histView.main)}
+                  </span>
+                </div>
+              ))}
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="btn btn-danger" onClick={(e) => { delSnap(e, histView); }}><Trash2 size={15} /></button>
+              <button className="btn btn-primary" style={{ flex: 1 }} onClick={() => openPdf(histView)}>
+                {incognito ? <EyeOff size={16} /> : <Printer size={16} />} {incognito ? "Incognito — zablokowane" : "Otwórz PDF"}
+              </button>
+            </div>
+          </>
+        )}
+      </Sheet>
     </div>
   );
 }
@@ -2759,7 +2812,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 28 · baza Supabase
+        <br />Sakwa · kompilacja 29 · baza Supabase
       </p>
     </div>
   );
