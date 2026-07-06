@@ -355,6 +355,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   html, body { height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; }
   .fin-root { position: fixed; inset: 0; height: auto !important; min-height: 0 !important; width: auto; overflow: hidden; }
   .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; overscroll-behavior-y: contain; overscroll-behavior-x: none; scrollbar-width: none; touch-action: pan-y; }
+  .app-scroll > * { min-height: calc(100% + 1px); }
   .app-scroll::-webkit-scrollbar { display: none; }
 }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
@@ -2754,7 +2755,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 26 · baza Supabase
+        <br />Sakwa · kompilacja 27 · baza Supabase
       </p>
     </div>
   );
