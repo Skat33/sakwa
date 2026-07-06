@@ -1458,7 +1458,8 @@ function Heatmap({ txs, toMain, monthISO, main }) {
   );
 }
 
-function Stats({ data, helpers, go, onGenerateReport, update }) {
+function Stats({ data, helpers, go, update, toast }) {
+  const [genPreset, setGenPreset] = useState(null);
   const { toMain, main } = helpers;
   const [preset, setPreset] = useState("m");
   const [custom, setCustom] = useState({ from: `${todayISO().slice(0, 7)}-01`, to: todayISO() });
@@ -1557,6 +1558,7 @@ function Stats({ data, helpers, go, onGenerateReport, update }) {
             {chartsReady ? <Donut slices={slices} centerLabel="Razem" centerValue={fmtMoney(exp, main, true)} /> : <div className="skeleton" style={{ height: 150 }} />}
           </div>
           <AiAnalysisCard data={data} txs={txs} helpers={helpers} update={update} rangeLabel={PRESETS.find((p) => p.id === preset)?.label || "własny zakres"} />
+          <ReportGenerator key={genPreset ? genPreset.n : "gen"} data={data} helpers={helpers} update={update} toast={toast} presetRange={genPreset} />
           {data.goals.length > 0 && (
             <div className="card" style={{ padding: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -1576,7 +1578,10 @@ function Stats({ data, helpers, go, onGenerateReport, update }) {
               })}
             </div>
           )}
-          <button className="btn btn-primary" onClick={() => onGenerateReport(range)}>
+          <button className="btn btn-primary" onClick={() => {
+            setGenPreset({ ...range, n: Date.now() });
+            setTimeout(() => document.getElementById("report-generator")?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+          }}>
             <FileText size={16} /> Generuj raport z tego zakresu
           </button>
         </div>
@@ -1610,8 +1615,12 @@ function downloadReportFile(report, data, main, toMain, aiNote) {
   table{width:100%;border-collapse:collapse;margin-bottom:26px}
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:#647082;text-align:left;padding:7px 8px;border-bottom:2px solid #D7DDE7}
   td{padding:7px 8px;border-bottom:1px solid #E7ECF3} .r{text-align:right;font-weight:700}
-  h2{font-size:15px;margin:0 0 10px} @media print{body{margin:12mm}}
+  h2{font-size:15px;margin:0 0 10px}
+  .bar{display:flex;justify-content:flex-end;margin:-6px 0 18px}
+  .bar button{font:inherit;font-weight:800;font-size:13px;padding:9px 16px;border-radius:10px;border:1px solid #D7DDE7;background:#F3F6FA;cursor:pointer}
+  @media print{body{margin:12mm}.bar{display:none}}
 </style></head><body>
+<div class="bar"><button onclick="window.print()">🖨 Drukuj / zapisz jako PDF</button></div>
 <h1>Raport finansowy</h1>
 <div class="sub">${fmtDate(report.from)} – ${fmtDate(report.to)} · waluta: ${main} · wygenerowano ${fmtDate(todayISO())}</div>
 <div class="cards">
@@ -1634,7 +1643,7 @@ ${report.slices.length ? `<h2>Podział wydatków wg kategorii</h2><table><thead>
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
-function downloadSnapshotFile(snap) {
+function snapshotHtml(snap, autoPrint) {
   const rows = snap.rows.map((r) => `<tr>
     <td>${r.date}</td><td>${escHtml(r.name)}</td><td>${escHtml(r.cat)}</td>
     <td class="r ${r.type}">${r.type === "income" ? "+" : "−"}${fmtMoney(r.amt, snap.main)}</td></tr>`).join("");
@@ -1653,8 +1662,12 @@ function downloadSnapshotFile(snap) {
   table{width:100%;border-collapse:collapse;margin-bottom:26px}
   th{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:#647082;text-align:left;padding:7px 8px;border-bottom:2px solid #D7DDE7}
   td{padding:7px 8px;border-bottom:1px solid #E7ECF3} .r{text-align:right;font-weight:700}
-  h2{font-size:15px;margin:0 0 10px} @media print{body{margin:12mm}}
+  h2{font-size:15px;margin:0 0 10px}
+  .bar{display:flex;justify-content:flex-end;margin:-6px 0 18px}
+  .bar button{font:inherit;font-weight:800;font-size:13px;padding:9px 16px;border-radius:10px;border:1px solid #D7DDE7;background:#F3F6FA;cursor:pointer}
+  @media print{body{margin:12mm}.bar{display:none}}
 </style></head><body>
+<div class="bar"><button onclick="window.print()">🖨 Drukuj / zapisz jako PDF</button></div>
 <h1>Raport finansowy</h1>
 <div class="sub">${fmtDate(snap.from)} – ${fmtDate(snap.to)} · waluta: ${snap.main} · wygenerowano ${fmtDate(snap.createdAt.slice(0, 10))} o ${fmtTime(snap.createdAt)}</div>
 <div class="cards">
@@ -1667,8 +1680,13 @@ ${snap.aiNote ? `<h2>Wniosek AI</h2><p style="border:1px solid #D7DDE7;border-ra
 ${snap.slices.length ? `<h2>Podział wydatków wg kategorii</h2><table><thead><tr><th>Kategoria</th><th class="r">Udział</th><th class="r">Kwota</th></tr></thead><tbody>${cats}</tbody></table>` : ""}
 <h2>Lista transakcji</h2>
 <table><thead><tr><th>Data</th><th>Nazwa</th><th>Kategoria</th><th class="r">Kwota</th></tr></thead><tbody>${rows || "<tr><td colspan=4>Brak transakcji</td></tr>"}</tbody></table>
-<script>window.onload = () => setTimeout(() => window.print(), 400);</script>
+${autoPrint ? '<script>window.onload = () => setTimeout(() => window.print(), 400);</' + 'script>' : ""}
 </body></html>`;
+  return html;
+}
+
+function downloadSnapshotFile(snap) {
+  const html = snapshotHtml(snap, true);
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -1677,7 +1695,16 @@ ${snap.slices.length ? `<h2>Podział wydatków wg kategorii</h2><table><thead><t
   setTimeout(() => URL.revokeObjectURL(url), 3000);
 }
 
-function Reports({ data, helpers, presetRange, update, toast, confirm }) {
+function openSnapshotWindow(snap) {
+  const w = window.open("", "_blank");
+  if (!w) return false;
+  w.document.open();
+  w.document.write(snapshotHtml(snap, false));
+  w.document.close();
+  return true;
+}
+
+function ReportGenerator({ data, helpers, presetRange, update, toast }) {
   const incognito = !!data.settings.hideBalance;
   const { toMain, main } = helpers;
   const [from, setFrom] = useState(presetRange?.from && presetRange.from !== "1970-01-01" ? presetRange.from : `${todayISO().slice(0, 7)}-01`);
@@ -1689,8 +1716,6 @@ function Reports({ data, helpers, presetRange, update, toast, confirm }) {
   const [aiStatus, setAiStatus] = useState("idle");
   const [aiMsg, setAiMsg] = useState("");
   const [cfgErrs, setCfgErrs] = useState({});
-  const [histView, setHistView] = useState(null);
-  const history = data.reports || [];
 
   const toggle = (id) => setSelCats((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
   const allIds = [...data.categories.map((c) => c.id), "uncat"];
@@ -1758,32 +1783,11 @@ function Reports({ data, helpers, presetRange, update, toast, confirm }) {
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <h1 className="page-title no-print">Raporty</h1>
-      {history.length > 0 && (
-        <div className="card no-print" style={{ padding: 18 }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>Historia raportów</div>
-            <span className="chip" style={{ background: "var(--info-dim)", color: "var(--info)" }}>{history.length} {history.length === 1 ? "raport" : history.length < 5 ? "raporty" : "raportów"}</span>
-          </div>
-          <div className="tx-list">
-            {history.map((h) => (
-              <div key={h.id} className="tx-row row-press" onClick={() => setHistView(h)}>
-                <div className="icon-badge" style={{ background: "var(--violet)" + "22", color: "var(--violet)" }}><FileText size={18} /></div>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 14 }}>{fmtDate(h.from)} – {fmtDate(h.to)}</div>
-                  <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-                    wygenerowano {fmtDate(h.createdAt.slice(0, 10))}, {fmtTime(h.createdAt)} · {h.count} transakcji{h.aiNote ? " · z wnioskiem AI" : ""}
-                  </div>
-                </div>
-                <ChevronRight size={17} style={{ color: "var(--muted)", flexShrink: 0 }} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      <div className="card no-print" style={{ padding: 18 }}>
-        <div style={{ fontWeight: 800, marginBottom: 14 }}>Konfiguracja raportu</div>
+      <div id="report-generator" className="card no-print" style={{ padding: 18 }}>
+        <div style={{ fontWeight: 800, marginBottom: 4 }}>Generator raportów</div>
+        <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 12.5, marginBottom: 14 }}>
+          Wygenerowany raport zapisze się automatycznie w zakładce Raporty.
+        </p>
         <div style={{ display: "flex", gap: 10, marginBottom: 14, flexWrap: "wrap" }}>
           <div style={{ flex: 1, minWidth: 140 }}>
             <label className="label">Od</label>
@@ -1817,68 +1821,6 @@ function Reports({ data, helpers, presetRange, update, toast, confirm }) {
         <button className="btn btn-primary" style={{ width: "100%" }} disabled={aiStatus === "loading"} onClick={generate}><FileText size={16} /> {aiStatus === "loading" ? "Generuję wniosek AI…" : "Generuj raport"}</button>
       </div>
 
-      <Sheet open={!!histView} onClose={() => setHistView(null)} title="Szczegóły raportu" wide>
-        {histView && (
-          <>
-            <div style={{ color: "var(--muted)", fontWeight: 700, fontSize: 13, marginBottom: 14 }}>
-              {fmtDate(histView.from)} – {fmtDate(histView.to)} · waluta: {histView.main} · wygenerowano {fmtDate(histView.createdAt.slice(0, 10))} o {fmtTime(histView.createdAt)}
-            </div>
-            <div className="stat-grid" style={{ marginBottom: 16 }}>
-              <StatCard icon={ArrowUpRight} label="Przychody" value={fmtMoney(histView.inc, histView.main)} tone="pos" />
-              <StatCard icon={ArrowDownRight} label="Wydatki" value={fmtMoney(histView.exp, histView.main)} tone="neg" />
-              <StatCard icon={Wallet} label="Bilans" value={fmtMoney(histView.inc - histView.exp, histView.main)} tone="info" />
-              <StatCard icon={List} label="Transakcje" value={histView.count} />
-            </div>
-            {histView.aiNote && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 800, marginBottom: 8, display: "flex", alignItems: "center", gap: 7 }}>
-                  <Sparkles size={15} style={{ color: "var(--violet)" }} /> Wniosek AI
-                </div>
-                <div className="card sens" style={{ padding: 14, background: "var(--surface2)", boxShadow: "none", fontSize: 13.5, fontWeight: 600, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>{histView.aiNote}</div>
-              </div>
-            )}
-            {histView.slices.length > 0 && (
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ fontWeight: 800, marginBottom: 8 }}>Podział wydatków wg kategorii</div>
-                {histView.slices.map((s) => (
-                  <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--line)", fontSize: 13.5, fontWeight: 700 }}>
-                    <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color }} />
-                    <span style={{ flex: 1 }}>{s.name}</span>
-                    <span style={{ color: "var(--muted)" }}>{histView.exp ? ((s.value / histView.exp) * 100).toFixed(1) : 0}%</span>
-                    <span className="sens" style={{ width: 110, textAlign: "right" }}>{fmtMoney(s.value, histView.main)}</span>
-                  </div>
-                ))}
-              </div>
-            )}
-            <div style={{ fontWeight: 800, marginBottom: 8 }}>Lista transakcji</div>
-            <div style={{ marginBottom: 16 }}>
-              {histView.rows.length === 0 ? <p style={{ color: "var(--muted)", fontWeight: 600 }}>Brak transakcji.</p> : histView.rows.map((r, i) => (
-                <div key={i} style={{ display: "flex", gap: 10, padding: "7px 0", borderBottom: "1px solid var(--line)", fontSize: 13, fontWeight: 600 }}>
-                  <span style={{ width: 82, color: "var(--muted)", flexShrink: 0 }}>{r.date}</span>
-                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.name}</span>
-                  <span style={{ color: "var(--muted)", width: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{r.cat}</span>
-                  <span className="sens" style={{ width: 105, textAlign: "right", fontWeight: 800, color: r.type === "income" ? "var(--accent)" : "var(--neg)" }}>
-                    {r.type === "income" ? "+" : "−"}{fmtMoney(r.amt, histView.main)}
-                  </span>
-                </div>
-              ))}
-            </div>
-            <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn btn-danger" onClick={() =>
-                confirm({ title: "Usunąć raport z historii?", desc: "Zapisany raport zostanie trwale usunięty z historii. Nie wpływa to na transakcje.", danger: true, confirmLabel: "Usuń" },
-                  () => { update((d) => ({ ...d, reports: (d.reports || []).filter((r) => r.id !== histView.id) })); setHistView(null); toast("Raport usunięty z historii"); })
-              }><Trash2 size={15} /></button>
-              <button className="btn btn-primary" style={{ flex: 1 }} disabled={incognito}
-                onClick={() => {
-                  if (incognito) { toast("Tryb incognito aktywny — pobieranie raportów jest zablokowane"); return; }
-                  downloadSnapshotFile(histView);
-                }}>
-                {incognito ? <EyeOff size={16} /> : <Printer size={16} />} {incognito ? "Incognito — zablokowane" : "Pobierz PDF"}
-              </button>
-            </div>
-          </>
-        )}
-      </Sheet>
 
       {report && (
         <div className="card print-area" style={{ padding: 22 }}>
@@ -2236,6 +2178,68 @@ function PayForm({ goal, dir, main, onPay, onClose }) {
 }
 
 /* ---------------- fuel ---------------- */
+
+function Reports({ data, helpers, go, toast, confirm, update }) {
+  const incognito = !!data.settings.hideBalance;
+  const history = data.reports || [];
+  const openSnap = (h) => {
+    if (incognito) { toast("Tryb incognito aktywny — podgląd raportów jest zablokowany"); return; }
+    if (!openSnapshotWindow(h)) toast("Przeglądarka zablokowała nowe okno — zezwól tej stronie na wyskakujące okna");
+  };
+  const delSnap = (e, h) => {
+    e.stopPropagation();
+    confirm({
+      title: "Usunąć raport z historii?",
+      desc: `Raport ${fmtDate(h.from)} – ${fmtDate(h.to)} zostanie trwale usunięty. Nie wpływa to na transakcje.`,
+      danger: true, confirmLabel: "Usuń",
+    }, () => {
+      update((d) => ({ ...d, reports: (d.reports || []).filter((r) => r.id !== h.id) }));
+      toast("Raport usunięty z historii");
+    });
+  };
+  return (
+    <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+      <h1 className="page-title">Raporty</h1>
+      <div className="card" style={{ padding: 16, display: "flex", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+        <div style={{ flex: 1, minWidth: 200 }}>
+          <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 3 }}>Chcesz wygenerować nowy raport?</div>
+          <div style={{ color: "var(--muted)", fontWeight: 600, fontSize: 12.5 }}>Generator znajdziesz w sekcji Statystyki — gotowy raport zapisze się tutaj.</div>
+        </div>
+        <button className="btn btn-primary" onClick={() => go("stats")}><BarChart3 size={16} /> Przejdź do Statystyk</button>
+      </div>
+      {history.length === 0 ? (
+        <EmptyState icon={FileText} title="Brak zapisanych raportów"
+          desc="Wygeneruj pierwszy raport w Statystykach — jego historia pojawi się w tym miejscu." />
+      ) : (
+        <div className="card" style={{ padding: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+            <div style={{ fontWeight: 800, fontSize: 16 }}>Historia raportów</div>
+            <span className="chip" style={{ background: "var(--info-dim)", color: "var(--info)" }}>{history.length} {history.length === 1 ? "raport" : history.length < 5 ? "raporty" : "raportów"}</span>
+          </div>
+          <div className="tx-list">
+            {history.map((h) => (
+              <div key={h.id} className="tx-row row-press" onClick={() => openSnap(h)} title="Otwórz szczegóły w nowym oknie">
+                <div className="icon-badge" style={{ background: "var(--violet)" + "22", color: "var(--violet)" }}><FileText size={18} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14 }}>{fmtDate(h.from)} – {fmtDate(h.to)}</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+                    wygenerowano {fmtDate(h.createdAt.slice(0, 10))}, {fmtTime(h.createdAt)} · {h.count} transakcji{h.aiNote ? " · z wnioskiem AI" : ""}
+                  </div>
+                </div>
+                <button className="btn btn-ghost" aria-label="Usuń raport" style={{ padding: 7, borderRadius: 10, color: "var(--neg)", flexShrink: 0 }}
+                  onClick={(e) => delSnap(e, h)}><X size={16} strokeWidth={2.6} /></button>
+                <ChevronRight size={17} style={{ color: "var(--muted)", flexShrink: 0 }} />
+              </div>
+            ))}
+          </div>
+          <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11.5, marginTop: 10 }}>
+            Kliknięcie raportu otwiera pełne szczegóły w nowej karcie — stamtąd wydrukujesz go lub zapiszesz jako PDF.
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefuel }) {
   const { main } = helpers;
@@ -2755,7 +2759,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 27 · baza Supabase
+        <br />Sakwa · kompilacja 28 · baza Supabase
       </p>
     </div>
   );
@@ -3621,7 +3625,6 @@ export default function App() {
   const navHiddenRef = useRef(false);
   useEffect(() => { navHiddenRef.current = navHidden; }, [navHidden]);
   const [conf, setConf] = useState(null);
-  const [reportRange, setReportRange] = useState(null);
   const toastTimer = useRef(null);
   const isDesktop = useMedia("(min-width: 1024px)");
   const user = sessionUser ? {
@@ -4028,7 +4031,6 @@ export default function App() {
   };
 
   const go = (v) => { setView(v); setSettingsSub(null); scrollTopAll(); };
-  const generateReport = (range) => { setReportRange(range); go("reports"); };
 
   /* keyboard shortcut Ctrl+K → new transaction */
   useEffect(() => {
@@ -4065,8 +4067,8 @@ export default function App() {
     switch (view) {
       case "dashboard": return <Dashboard data={data} helpers={helpers} go={go} update={update} toast={toast} userEmail={user?.login} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "history": return <History data={data} helpers={helpers} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
-      case "stats": return <Stats data={data} helpers={helpers} go={go} update={update} onGenerateReport={generateReport} />;
-      case "reports": return <Reports key={reportRange ? reportRange.from + reportRange.to : "r"} data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} presetRange={reportRange} />;
+      case "stats": return <Stats data={data} helpers={helpers} go={go} update={update} toast={toast} />;
+      case "reports": return <Reports data={data} helpers={helpers} go={go} toast={toast} confirm={confirm} update={update} />;
       case "fuel": return <Fuel_ data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} openRefuel={openRefuel} setOpenRefuel={setOpenRefuel} />;
       case "goals": return <Goals data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "budgets": return <Budgets data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
