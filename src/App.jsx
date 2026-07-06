@@ -441,7 +441,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 @media (max-width: 1023px) {
   .sticky-head { padding-top: calc(max(env(safe-area-inset-top), 34px) + 12px); margin-top: calc(-1 * (max(env(safe-area-inset-top), 34px) + 24px)); }
 }
-h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
+h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padding-left: 4px; }
+@media (max-width: 1023px) { h1.page-title { padding-left: 10px; } }
 .auth-wrap { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: calc(max(env(safe-area-inset-top), 34px) + 16px) 20px calc(max(env(safe-area-inset-bottom), 16px) + 16px); }
 .hero-balance {
   position: relative; overflow: hidden; padding: 26px 24px;
@@ -2753,7 +2754,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 25 · baza Supabase
+        <br />Sakwa · kompilacja 26 · baza Supabase
       </p>
     </div>
   );
@@ -3641,27 +3642,50 @@ export default function App() {
   const confirm = useCallback((cfg, onYes) => { confirmCb.current = onYes; setConf(cfg); }, []);
   const confirmDone = (yes) => { setConf(null); if (yes && confirmCb.current) confirmCb.current(); confirmCb.current = null; };
 
-  /* mobile: iOS potrafi zostawić przewijanie "wyciągnięte" poza początek/koniec listy
-     i nie sprężynować z powrotem — wykrywamy to i dociągamy płynną animacją */
+  /* mobile: iOS potrafi zostawić przewijanie "wyciągnięte" poza początek/koniec listy.
+     Nie walczymy z natywnym sprężynowaniem (ono samo animuje powrót) — interweniujemy
+     WYŁĄCZNIE, gdy pozycja jest poza zakresem i zamrożona (nie zmienia się), a palec
+     nie dotyka ekranu. Wtedy dociągamy własną animacją o stałym tempie. */
   useEffect(() => {
     if (isDesktop) return;
     const el = document.querySelector(".app-scroll");
     if (!el) return;
-    let t = null;
-    const settle = () => {
-      const max = Math.max(0, el.scrollHeight - el.clientHeight);
-      if (el.scrollTop < 0) {
-        try { el.scrollTo({ top: 0, behavior: "smooth" }); } catch { el.scrollTop = 0; }
-      } else if (el.scrollTop > max) {
-        try { el.scrollTo({ top: max, behavior: "smooth" }); } catch { el.scrollTop = max; }
-      }
+    let touching = false, lastY = null, animRaf = null;
+    const cancelAnim = () => { if (animRaf) { cancelAnimationFrame(animRaf); animRaf = null; } };
+    const animateTo = (target) => {
+      cancelAnim();
+      const from = el.scrollTop;
+      const dist = target - from;
+      const dur = 280;
+      const t0 = performance.now();
+      const step = (now) => {
+        const p = Math.min(1, (now - t0) / dur);
+        const ease = 1 - Math.pow(1 - p, 3); // easeOutCubic
+        el.scrollTop = from + dist * ease;
+        if (p < 1) animRaf = requestAnimationFrame(step);
+        else animRaf = null;
+      };
+      animRaf = requestAnimationFrame(step);
     };
-    const onEnd = () => { clearTimeout(t); t = setTimeout(settle, 90); };
+    const onStart = () => { touching = true; lastY = null; cancelAnim(); };
+    const onEnd = () => { touching = false; lastY = null; };
+    const tick = () => {
+      if (touching || animRaf) return;
+      const max = Math.max(0, el.scrollHeight - el.clientHeight);
+      const y = el.scrollTop;
+      const target = y < -1 ? 0 : y > max + 1 ? max : null;
+      if (target === null) { lastY = null; return; }
+      // poza zakresem: jeśli DWA odczyty z rzędu identyczne => natywna animacja nie wróciła, utknęło
+      if (lastY !== null && Math.abs(lastY - y) < 1) { lastY = null; animateTo(target); }
+      else lastY = y;
+    };
+    const iv = setInterval(tick, 160);
+    el.addEventListener("touchstart", onStart, { passive: true });
     el.addEventListener("touchend", onEnd, { passive: true });
     el.addEventListener("touchcancel", onEnd, { passive: true });
-    const iv = setInterval(settle, 600); // siatka bezpieczeństwa, gdyby touchend przepadł
     return () => {
-      clearTimeout(t); clearInterval(iv);
+      clearInterval(iv); cancelAnim();
+      el.removeEventListener("touchstart", onStart);
       el.removeEventListener("touchend", onEnd);
       el.removeEventListener("touchcancel", onEnd);
     };
