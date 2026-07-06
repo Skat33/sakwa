@@ -99,6 +99,7 @@ const emptyData = () => ({
 /* ---------------- storage: Supabase (dane) + localStorage (tylko motyw) ---------------- */
 
 const THEME_LS_KEY = "sakwa-theme";
+const NAV_LS_KEY = "sakwa-nav-order";
 const KEEP_LS_KEY = "sakwa-keep30";
 const LASTACT_LS_KEY = "sakwa-last-activity";
 const AUTOF = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(min-width: 768px)").matches;
@@ -1816,11 +1817,11 @@ function ReportGenerator({ data, helpers, presetRange, update, toast }) {
       </div>
 
 
-      {report && (
-        <div className="card print-area" style={{ padding: 22 }}>
+      <Sheet open={!!report} onClose={() => setReport(null)} title="Raport finansowy" wide>
+        {report && (
+        <div className="print-area">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
             <div>
-              <div style={{ fontWeight: 800, fontSize: 19 }}>Raport finansowy</div>
               <div style={{ color: "var(--muted)", fontWeight: 700, fontSize: 13 }}>{fmtDate(report.from)} – {fmtDate(report.to)} · waluta: {main}</div>
               <div style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11.5, marginTop: 3 }}>Pobrany plik otworzy okno wydruku — wybierz „Zapisz jako PDF".</div>
             </div>
@@ -1885,7 +1886,8 @@ function ReportGenerator({ data, helpers, presetRange, update, toast }) {
             );
           })}
         </div>
-      )}
+        )}
+      </Sheet>
     </div>
   );
 }
@@ -2812,7 +2814,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 29 · baza Supabase
+        <br />Sakwa · kompilacja 30 · baza Supabase
       </p>
     </div>
   );
@@ -3989,6 +3991,18 @@ export default function App() {
     if (localTheme && THEMES.some((t) => t.id === localTheme)) {
       d = { ...d, settings: { ...d.settings, theme: localTheme } };
     }
+    // nawigacja: jeśli baza zwróciła układ domyślny, a lokalnie mamy własny — przywróć lokalny
+    try {
+      const rawNav = localStorage.getItem(NAV_LS_KEY);
+      if (rawNav) {
+        const localNav = JSON.parse(rawNav);
+        const dbIsDefault = !d.settings.navOrder ||
+          JSON.stringify(normalizeNav(d.settings.navOrder)) === JSON.stringify(normalizeNav(DEFAULT_NAV));
+        if (Array.isArray(localNav) && localNav.length && dbIsDefault) {
+          d = { ...d, settings: { ...d.settings, navOrder: localNav } };
+        }
+      }
+    } catch {}
     const generated = generateRecurringTx(d);
     if (generated.length) d = { ...d, transactions: [...d.transactions, ...generated] };
     setData(d);
@@ -4015,6 +4029,14 @@ export default function App() {
   useEffect(() => {
     if (data?.settings?.theme) saveLocalTheme(data.settings.theme);
   }, [data?.settings?.theme]);
+
+  /* układ nawigacji: zapis w bazie + lustrzana kopia lokalna (odporność na utratę) */
+  useEffect(() => {
+    const n = data?.settings?.navOrder;
+    if (Array.isArray(n) && n.length) {
+      try { localStorage.setItem(NAV_LS_KEY, JSON.stringify(n)); } catch {}
+    }
+  }, [data?.settings?.navOrder]);
 
   const logout = async () => {
     try { if (data && userId) await dbSave(userId, data); } catch {}
