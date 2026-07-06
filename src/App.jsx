@@ -443,6 +443,10 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; }
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
 .to-top {
   position: fixed; right: 16px; bottom: calc(96px + var(--vv-off, 0px) + env(safe-area-inset-bottom)); z-index: 45;
+  transition: bottom .28s cubic-bezier(.22,.9,.3,1), opacity .2s ease, transform .2s ease;
+}
+.fin-root[data-nav-hidden="1"] .to-top { bottom: calc(22px + var(--vv-off, 0px) + env(safe-area-inset-bottom)); }
+.to-top {
   width: 46px; height: 46px; border-radius: 16px;
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   display: flex; align-items: center; justify-content: center; cursor: pointer;
@@ -2709,7 +2713,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 21 · baza Supabase
+        <br />Sakwa · kompilacja 22 · baza Supabase
       </p>
     </div>
   );
@@ -3570,7 +3574,7 @@ export default function App() {
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv) return;
-    let raf = null;
+    let raf = null, pending = null, pendTimer = null;
     const upd = () => {
       if (raf) return;
       raf = requestAnimationFrame(() => {
@@ -3578,27 +3582,45 @@ export default function App() {
         const nav = navRef.current;
         if (!nav) { document.documentElement.style.setProperty("--vv-off", "0px"); return; }
         if (navHiddenRef.current) return; // nie mierz schowanego navbara
+        const ae = document.activeElement;
+        if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return; // trwa pisanie — nie ruszaj
+        // klawiatura otwarta lub w trakcie animacji => viewport kłamie, nie mierz
+        if (vv.height < window.innerHeight - 120) { pending = null; return; }
         const visualBottom = vv.offsetTop + vv.height;
         const rect = nav.getBoundingClientRect();
         const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--vv-off")) || 0;
-        const ae = document.activeElement;
-        if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return; // keyboard session — hold position
         let next = cur + Math.round(rect.bottom - visualBottom);
         next = Math.max(0, next);
         if (next > 170) next = 0;
-        if (Math.abs(next - cur) > 2) document.documentElement.style.setProperty("--vv-off", next + "px");
+        if (Math.abs(next - cur) <= 2) { pending = null; return; }
+        // zatwierdź dopiero, gdy DWA pomiary z rzędu dają to samo
+        // (odfiltrowuje klatki złapane w połowie animacji navbara/klawiatury)
+        if (pending !== null && Math.abs(pending - next) <= 2) {
+          pending = null;
+          document.documentElement.style.setProperty("--vv-off", next + "px");
+        } else {
+          pending = next;
+          clearTimeout(pendTimer);
+          pendTimer = setTimeout(upd, 150);
+        }
       });
     };
+    const updSoon = () => setTimeout(upd, 420); // po zamknięciu klawiatury, po animacji
     upd();
     const t1 = setTimeout(upd, 250);
     const t2 = setTimeout(upd, 900);
     vv.addEventListener("resize", upd);
     window.addEventListener("orientationchange", upd);
+    window.addEventListener("focusout", updSoon);
+    const navEl = navRef.current;
+    if (navEl) navEl.addEventListener("transitionend", upd);
     return () => {
-      clearTimeout(t1); clearTimeout(t2);
+      clearTimeout(t1); clearTimeout(t2); clearTimeout(pendTimer);
       if (raf) cancelAnimationFrame(raf);
       vv.removeEventListener("resize", upd);
       window.removeEventListener("orientationchange", upd);
+      window.removeEventListener("focusout", updSoon);
+      if (navEl) navEl.removeEventListener("transitionend", upd);
     };
   }, [phase, isDesktop]);
 
@@ -3883,7 +3905,7 @@ export default function App() {
   const activeTab = barIds.includes(view) ? view : (barIds.includes("more") && !barIds.includes(view) ? "more" : null);
 
   return (
-    <div className={`fin-root ${data.settings.hideBalance ? "incognito" : ""}`} data-theme={theme}>
+    <div className={`fin-root ${data.settings.hideBalance ? "incognito" : ""}`} data-theme={theme} data-nav-hidden={navHidden && !isDesktop ? "1" : "0"}>
       <style>{CSS}</style>
       <div className="app-scroll">
       <div style={{ display: "flex" }}>
