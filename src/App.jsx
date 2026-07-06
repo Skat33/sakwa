@@ -252,6 +252,7 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .sheet-body::-webkit-scrollbar { display: none; }
 button, .btn, .cat-tile, .tx-row, .nav-item, .seg button, input, select, textarea, label { touch-action: pan-y; }
 .scroll-x, .scroll-x * { touch-action: pan-x pan-y; }
+.scroll-x { overscroll-behavior-x: contain; }
 .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .seg::-webkit-scrollbar { display: none; }
 .fin-root {
@@ -353,7 +354,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 @media (max-width: 1023px) {
   html, body { height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; }
   .fin-root { position: fixed; inset: 0; height: auto !important; min-height: 0 !important; width: auto; overflow: hidden; }
-  .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; scrollbar-width: none; touch-action: pan-y; }
+  .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; overscroll-behavior: none; scrollbar-width: none; touch-action: pan-y; }
   .app-scroll::-webkit-scrollbar { display: none; }
 }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
@@ -2303,15 +2304,26 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h1 className="page-title">Paliwo</h1>
-        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost" onClick={() => setCarForm({})}><Plus size={15} /> Auto</button>
-          <button className="btn btn-ghost" onClick={() => setStationForm({})}><Plus size={15} /> Stacja</button>
-          <button className="btn btn-primary" disabled={!data.cars.length || !data.stations.length} onClick={() => setOpenRefuel(true)}>
+        <h1 className="page-title" style={{ margin: 0 }}>Paliwo</h1>
+        {!isMobileF && (
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn btn-ghost" onClick={() => setCarForm({})}><Plus size={15} /> Auto</button>
+            <button className="btn btn-ghost" onClick={() => setStationForm({})}><Plus size={15} /> Stacja</button>
+            <button className="btn btn-primary" disabled={!data.cars.length || !data.stations.length} onClick={() => setOpenRefuel(true)}>
+              <Droplets size={16} /> Dodaj tankowanie
+            </button>
+          </div>
+        )}
+      </div>
+      {isMobileF && (
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: -6 }}>
+          <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setCarForm({})}><Plus size={15} /> Auto</button>
+          <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setStationForm({})}><Plus size={15} /> Stacja</button>
+          <button className="btn btn-primary" style={{ width: "100%", gridColumn: "1 / -1" }} disabled={!data.cars.length || !data.stations.length} onClick={() => setOpenRefuel(true)}>
             <Droplets size={16} /> Dodaj tankowanie
           </button>
         </div>
-      </div>
+      )}
 
       {data.cars.length === 0 ? (
         <EmptyState icon={CarFront} title="Brak samochodów" desc="Dodaj pierwszy samochód, aby śledzić tankowania, spalanie i koszty."
@@ -2741,7 +2753,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 23 · baza Supabase
+        <br />Sakwa · kompilacja 24 · baza Supabase
       </p>
     </div>
   );
