@@ -354,7 +354,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 @media (max-width: 1023px) {
   html, body { height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; }
   .fin-root { position: fixed; inset: 0; height: auto !important; min-height: 0 !important; width: auto; overflow: hidden; }
-  .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; overscroll-behavior: none; scrollbar-width: none; touch-action: pan-y; }
+  .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; overscroll-behavior-y: contain; overscroll-behavior-x: none; scrollbar-width: none; touch-action: pan-y; }
   .app-scroll::-webkit-scrollbar { display: none; }
 }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
@@ -2753,7 +2753,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 24 · baza Supabase
+        <br />Sakwa · kompilacja 25 · baza Supabase
       </p>
     </div>
   );
@@ -3640,6 +3640,32 @@ export default function App() {
   const confirmCb = useRef(null);
   const confirm = useCallback((cfg, onYes) => { confirmCb.current = onYes; setConf(cfg); }, []);
   const confirmDone = (yes) => { setConf(null); if (yes && confirmCb.current) confirmCb.current(); confirmCb.current = null; };
+
+  /* mobile: iOS potrafi zostawić przewijanie "wyciągnięte" poza początek/koniec listy
+     i nie sprężynować z powrotem — wykrywamy to i dociągamy płynną animacją */
+  useEffect(() => {
+    if (isDesktop) return;
+    const el = document.querySelector(".app-scroll");
+    if (!el) return;
+    let t = null;
+    const settle = () => {
+      const max = Math.max(0, el.scrollHeight - el.clientHeight);
+      if (el.scrollTop < 0) {
+        try { el.scrollTo({ top: 0, behavior: "smooth" }); } catch { el.scrollTop = 0; }
+      } else if (el.scrollTop > max) {
+        try { el.scrollTo({ top: max, behavior: "smooth" }); } catch { el.scrollTop = max; }
+      }
+    };
+    const onEnd = () => { clearTimeout(t); t = setTimeout(settle, 90); };
+    el.addEventListener("touchend", onEnd, { passive: true });
+    el.addEventListener("touchcancel", onEnd, { passive: true });
+    const iv = setInterval(settle, 600); // siatka bezpieczeństwa, gdyby touchend przepadł
+    return () => {
+      clearTimeout(t); clearInterval(iv);
+      el.removeEventListener("touchend", onEnd);
+      el.removeEventListener("touchcancel", onEnd);
+    };
+  }, [phase, isDesktop, view]);
 
   /* mobile: chowaj navbar przy scrollu w dół, pokazuj przy scrollu w górę */
   useEffect(() => {
