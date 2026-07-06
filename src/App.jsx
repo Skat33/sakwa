@@ -2709,7 +2709,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 20 · baza Supabase
+        <br />Sakwa · kompilacja 21 · baza Supabase
       </p>
     </div>
   );
@@ -3118,39 +3118,80 @@ function generateRecurringTx(data) {
 
 /* ---------------- budgets (standalone) ---------------- */
 
-function Budgets({ data, helpers, update, toast }) {
+function Budgets({ data, helpers, update, toast, confirm }) {
   const { toMain, main } = helpers;
   const now = new Date();
   const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const nextD = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   const nextYM = `${nextD.getFullYear()}-${String(nextD.getMonth() + 1).padStart(2, "0")}`;
-  const [monthSel, setMonthSel] = useState("cur");
-  const ymKey = monthSel === "cur" ? curYM : nextYM;
-  const monthLabel = monthSel === "cur"
+  const monthOpts = [
+    { value: "cur", label: `Bieżący (${MONTHS_PL[now.getMonth()]})` },
+    { value: "next", label: `Przyszły (${MONTHS_PL[nextD.getMonth()]})` },
+  ];
+  const labelFor = (sel) => sel === "cur"
     ? `${MONTHS_FULL[now.getMonth()]} ${now.getFullYear()}`
     : `${MONTHS_FULL[nextD.getMonth()]} ${nextD.getFullYear()}`;
+
+  const [monthSel, setMonthSel] = useState("cur");
+  const ymKey = monthSel === "cur" ? curYM : nextYM;
+  const monthLabel = labelFor(monthSel);
   const cats = data.categories.filter((c) => c.type === "expense");
   const saved = data.budgets?.[ymKey] || {};
-  const [vals, setVals] = useState({});
-  useEffect(() => {
-    setVals(Object.fromEntries(cats.map((c) => [c.id, saved[c.id] ? String(saved[c.id]).replace(".", ",") : ""])));
-  }, [ymKey]); // eslint-disable-line
 
   const spentFor = (catId) => data.transactions
     .filter((t) => t.type === "expense" && t.categoryId === catId && ym(t.date) === curYM)
     .reduce((s, t) => s + toMain(t.amount, t.currency), 0);
 
-  const save = () => {
-    const next = {};
-    for (const c of cats) {
-      const raw = (vals[c.id] || "").trim();
-      if (!raw) continue;
-      const n = parseNum(raw);
-      if (isNaN(n) || n <= 0) { toast(`Nieprawidłowy limit dla kategorii ${c.name}.`); return; }
-      next[c.id] = Math.round(n * 100) / 100;
-    }
-    update((d) => ({ ...d, budgets: { ...(d.budgets || {}), [ymKey]: next } }));
-    toast(`Budżety na ${monthLabel.toLowerCase()} zapisane`);
+  /* --- sheet: dodawanie / edycja pojedynczego budżetu --- */
+  const [sheet, setSheet] = useState(null); // { mode: "add" } | { mode: "edit", catId }
+  const [sheetMonth, setSheetMonth] = useState("cur");
+  const [selCat, setSelCat] = useState("");
+  const [amount, setAmount] = useState("");
+  const [err, setErr] = useState("");
+
+  const sheetYM = sheetMonth === "cur" ? curYM : nextYM;
+  const savedSheet = data.budgets?.[sheetYM] || {};
+  const availableCats = sheet?.mode === "edit"
+    ? cats.filter((c) => c.id === sheet.catId)
+    : cats.filter((c) => !savedSheet[c.id]);
+
+  const openAdd = () => { setSheetMonth(monthSel); setSelCat(""); setAmount(""); setErr(""); setSheet({ mode: "add" }); };
+  const openEdit = (catId) => {
+    setSheetMonth(monthSel); setSelCat(catId);
+    setAmount(String(saved[catId]).replace(".", ",")); setErr("");
+    setSheet({ mode: "edit", catId });
+  };
+
+  const saveBudget = () => {
+    if (!selCat) return setErr("Wybierz kategorię.");
+    const n = parseNum((amount || "").trim());
+    if (isNaN(n) || n <= 0) return setErr("Podaj prawidłowy limit większy od zera.");
+    const c = cats.find((x) => x.id === selCat);
+    update((d) => ({
+      ...d,
+      budgets: { ...(d.budgets || {}), [sheetYM]: { ...(d.budgets?.[sheetYM] || {}), [selCat]: Math.round(n * 100) / 100 } },
+    }));
+    setSheet(null);
+    toast(sheet?.mode === "edit"
+      ? `Budżet „${c?.name}" zaktualizowany`
+      : `Budżet „${c?.name}" dodany na ${labelFor(sheetMonth).toLowerCase()}`);
+    if (sheet?.mode === "add" && sheetMonth !== monthSel) setMonthSel(sheetMonth);
+  };
+
+  const removeBudget = (catId) => {
+    const c = cats.find((x) => x.id === catId);
+    confirm({
+      title: "Usunąć budżet?",
+      desc: `Limit dla kategorii „${c ? c.name : "usunięta kategoria"}" na ${monthLabel.toLowerCase()} zostanie usunięty. Transakcje pozostaną nietknięte.`,
+      danger: true, confirmLabel: "Usuń budżet",
+    }, () => {
+      update((d) => {
+        const m = { ...(d.budgets?.[ymKey] || {}) };
+        delete m[catId];
+        return { ...d, budgets: { ...(d.budgets || {}), [ymKey]: m } };
+      });
+      toast("Budżet usunięty");
+    });
   };
 
   const activeRows = Object.entries(saved).filter(([, v]) => v > 0);
@@ -3159,9 +3200,12 @@ function Budgets({ data, helpers, update, toast }) {
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <h1 className="page-title">Budżety</h1>
-      <Seg value={monthSel} onChange={setMonthSel}
-        options={[{ value: "cur", label: `Bieżący (${MONTHS_PL[now.getMonth()]})` }, { value: "next", label: `Przyszły (${MONTHS_PL[nextD.getMonth()]})` }]} />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+        <h1 className="page-title" style={{ margin: 0 }}>Budżety</h1>
+        <button className="btn btn-primary" onClick={openAdd}><Plus size={16} /> Dodaj budżet</button>
+      </div>
+      <Seg value={monthSel} onChange={setMonthSel} options={monthOpts} />
+
       {activeRows.length > 0 && (
         <div className="card" style={{ padding: 18 }}>
           <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)", marginBottom: 4 }}>
@@ -3177,41 +3221,99 @@ function Budgets({ data, helpers, update, toast }) {
           )}
         </div>
       )}
-      <div className="card" style={{ padding: 16 }}
-        onKeyDown={(e) => { if (e.key === "Enter" && e.target?.tagName === "INPUT") { e.preventDefault(); document.getElementById("budget-save")?.click(); } }}>
-        <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13, lineHeight: 1.55, marginBottom: 14 }}>
-          Ustaw limity wydatków (w {main}) dla kategorii na {monthLabel.toLowerCase()}. Puste pole = brak budżetu.
-          {monthSel === "next" && " Limity zaczną obowiązywać od pierwszego dnia przyszłego miesiąca."}
-        </p>
-        {cats.map((c) => {
-          const spent = monthSel === "cur" ? spentFor(c.id) : 0;
-          const limit = saved[c.id] || 0;
-          const ratio = limit > 0 ? spent / limit : 0;
-          const color = ratio >= 1 ? "var(--neg)" : ratio >= 0.8 ? "var(--warn)" : "var(--accent)";
-          return (
-            <div key={c.id} style={{ marginBottom: 14 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <CatIcon cat={c} size={34} />
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 800, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</div>
-                  {monthSel === "cur" && limit > 0 && (
-                    <div className="sens" style={{ fontSize: 11.5, fontWeight: 700, color }}>{fmtMoney(spent, main, true)} / {fmtMoney(limit, main, true)}</div>
+
+      {activeRows.length === 0 ? (
+        <div className="card" style={{ padding: "34px 20px", textAlign: "center" }}>
+          <div className="icon-badge" style={{ width: 52, height: 52, borderRadius: 18, background: "var(--surface2)", color: "var(--muted)", margin: "0 auto 12px" }}>
+            <Landmark size={24} />
+          </div>
+          <div style={{ fontWeight: 800, fontSize: 15.5, marginBottom: 6 }}>Brak budżetów na {monthLabel.toLowerCase()}</div>
+          <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13, lineHeight: 1.55, marginBottom: 16 }}>
+            Dodaj limit dla wybranej kategorii, a aplikacja pokaże na bieżąco, ile z niego wykorzystujesz.
+          </p>
+          <button className="btn btn-primary" onClick={openAdd}><Plus size={16} /> Dodaj pierwszy budżet</button>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 16 }}>
+          {monthSel === "next" && (
+            <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 12.5, lineHeight: 1.55, marginBottom: 14 }}>
+              Limity zaczną obowiązywać od pierwszego dnia przyszłego miesiąca.
+            </p>
+          )}
+          {activeRows.map(([id, limit]) => {
+            const c = cats.find((x) => x.id === id);
+            const spent = monthSel === "cur" ? spentFor(id) : 0;
+            const ratio = limit > 0 ? spent / limit : 0;
+            const color = ratio >= 1 ? "var(--neg)" : ratio >= 0.8 ? "var(--warn)" : "var(--accent)";
+            return (
+              <div key={id} style={{ marginBottom: 14 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  {c ? <CatIcon cat={c} size={34} /> : (
+                    <div className="icon-badge" style={{ width: 34, height: 34, background: "var(--surface2)", color: "var(--muted)" }}><CircleHelp size={17} /></div>
                   )}
+                  <button onClick={() => c && openEdit(id)} style={{ flex: 1, minWidth: 0, border: "none", background: "none", fontFamily: "inherit", color: "var(--text)", textAlign: "left", cursor: c ? "pointer" : "default", padding: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: 13.5, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c ? c.name : "Usunięta kategoria"}</div>
+                    <div className="sens" style={{ fontSize: 11.5, fontWeight: 700, color: monthSel === "cur" ? color : "var(--muted)" }}>
+                      {monthSel === "cur" ? <>{fmtMoney(spent, main, true)} / {fmtMoney(limit, main, true)}</> : <>limit {fmtMoney(limit, main, true)}</>}
+                    </div>
+                  </button>
+                  <button className="btn btn-ghost" aria-label={`Usuń budżet ${c ? c.name : ""}`}
+                    style={{ padding: 7, borderRadius: 10, color: "var(--neg)", flexShrink: 0 }}
+                    onClick={() => removeBudget(id)}>
+                    <X size={17} strokeWidth={2.6} />
+                  </button>
                 </div>
-                <div style={{ width: 140 }}>
-                  <NumInput value={vals[c.id] || ""} onChange={(v) => setVals({ ...vals, [c.id]: v })} placeholder="—" suffix={main} />
-                </div>
+                {monthSel === "cur" && (
+                  <div className="progress-track" style={{ height: 6, marginTop: 7 }}>
+                    <div className="progress-fill" style={{ width: `${Math.min(100, ratio * 100)}%`, background: color }} />
+                  </div>
+                )}
               </div>
-              {monthSel === "cur" && limit > 0 && (
-                <div className="progress-track" style={{ height: 6, marginTop: 7 }}>
-                  <div className="progress-fill" style={{ width: `${Math.min(100, ratio * 100)}%`, background: color }} />
-                </div>
-              )}
+            );
+          })}
+          <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 11.5, marginTop: 2 }}>
+            Kliknij nazwę kategorii, aby zmienić limit.
+          </p>
+        </div>
+      )}
+
+      <Sheet open={!!sheet} onClose={() => setSheet(null)} title={sheet?.mode === "edit" ? "Edytuj budżet" : "Nowy budżet"}>
+        {sheet?.mode === "add" ? (
+          <Field label="Miesiąc">
+            <Seg value={sheetMonth} onChange={setSheetMonth} options={monthOpts} />
+          </Field>
+        ) : (
+          <p style={{ color: "var(--muted)", fontWeight: 700, fontSize: 12.5, marginBottom: 12 }}>
+            Miesiąc: {labelFor(sheetMonth).toLowerCase()}
+          </p>
+        )}
+        <Field label="Kategoria" error={!selCat && err ? err : undefined}>
+          {sheet?.mode === "edit" ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              {availableCats[0] && <CatIcon cat={availableCats[0]} size={32} />}
+              <div style={{ fontWeight: 800, fontSize: 14 }}>{availableCats[0]?.name}</div>
             </div>
-          );
-        })}
-        <button id="budget-save" className="btn btn-primary" style={{ width: "100%", marginTop: 4 }} onClick={save}>Zapisz budżety na {monthLabel.toLowerCase()}</button>
-      </div>
+          ) : availableCats.length ? (
+            <select className={`input ${!selCat && err ? "err" : ""}`} value={selCat} onChange={(e) => { setSelCat(e.target.value); setErr(""); }}>
+              <option value="">— wybierz kategorię —</option>
+              {availableCats.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+          ) : (
+            <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13, lineHeight: 1.5 }}>
+              Wszystkie kategorie wydatków mają już budżet na {labelFor(sheetMonth).toLowerCase()}.
+            </p>
+          )}
+        </Field>
+        <Field label={`Limit (${main})`} error={selCat && err ? err : undefined}>
+          <NumInput value={amount} onChange={(v) => { setAmount(v); setErr(""); }} placeholder="np. 800" suffix={main} />
+        </Field>
+        <div style={{ display: "flex", gap: 10, marginTop: 4 }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setSheet(null)}>Anuluj</button>
+          <button className="btn btn-primary" style={{ flex: 2 }} disabled={sheet?.mode === "add" && !availableCats.length} onClick={saveBudget}>
+            {sheet?.mode === "edit" ? "Zapisz zmiany" : "Dodaj budżet"}
+          </button>
+        </div>
+      </Sheet>
     </div>
   );
 }
@@ -3767,7 +3869,7 @@ export default function App() {
       case "reports": return <Reports key={reportRange ? reportRange.from + reportRange.to : "r"} data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} presetRange={reportRange} />;
       case "fuel": return <Fuel_ data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} openRefuel={openRefuel} setOpenRefuel={setOpenRefuel} />;
       case "goals": return <Goals data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
-      case "budgets": return <Budgets data={data} helpers={helpers} update={update} toast={toast} />;
+      case "budgets": return <Budgets data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "more": return <More go={go} data={data} />;
       case "settings": return <Settings_ data={data} user={user} update={update} updateUser={updateUser} go={go} toast={toast} confirm={confirm} onLogout={logout} onDeleteAccount={deleteAccount} sub={settingsSub} setSub={setSettingsSub} />;
       default: return null;
