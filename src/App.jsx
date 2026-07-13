@@ -664,6 +664,12 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   box-shadow: 14px 0 34px -18px rgba(0, 0, 0, 0.35);
 }
 .sidebar button.nav-item { border-radius: 13px; }
+.sidebar .side-profile {
+  background: color-mix(in srgb, var(--surface2) 88%, transparent);
+  border: 1px solid var(--line);
+  border-radius: 15px;
+}
+.sidebar .side-profile:hover { border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
 .sidebar button.nav-item.on {
   background: var(--grad-accent); color: var(--on-accent);
   box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent);
@@ -2898,16 +2904,9 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           </div>
 
           {car && (
-            <div style={{ display: "flex", gap: 10 }}>
-              <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setCarForm(car)}><Pencil size={15} /> Edytuj auto</button>
-              <button className="btn btn-danger" style={{ flex: 1 }} onClick={() =>
-                confirm({ title: "Usunąć samochód?", desc: `Auto „${car.name}" i wszystkie jego tankowania zostaną trwale usunięte.`, danger: true, confirmLabel: "Usuń auto" },
-                  () => { update((d) => {
-                    const gone = new Set(d.refuels.filter((r) => r.carId === car.id).map((r) => r.id));
-                    return { ...d, cars: d.cars.filter((x) => x.id !== car.id), refuels: d.refuels.filter((r) => r.carId !== car.id), transactions: d.transactions.filter((t) => !t.refuelId || !gone.has(t.refuelId)) };
-                  }); toast("Samochód usunięty"); })
-              }><Trash2 size={15} /> Usuń auto</button>
-            </div>
+            <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 12, margin: "2px 2px 0" }}>
+              Edycję i usuwanie aut znajdziesz w Ustawieniach → Samochody i stacje.
+            </p>
           )}
         </>
       )}
@@ -4606,8 +4605,10 @@ export default function App() {
             })}
             <div style={{ flex: 1 }} />
             {user && (
-              <button className="nav-item" aria-label="Otwórz profil"
-                style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}
+              <>
+              <div style={{ height: 1, background: "var(--line)", margin: "14px 4px 12px" }} />
+              <button className="nav-item side-profile" aria-label="Otwórz profil"
+                style={{ display: "flex", alignItems: "center", gap: 10, padding: "11px 12px" }}
                 onClick={openProfile}>
                 <div style={{ width: 34, height: 34, borderRadius: 12, background: user.avatarColor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
                   {user.name.charAt(0).toUpperCase()}
@@ -4617,6 +4618,7 @@ export default function App() {
                   <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700 }}>@{user.login}</div>
                 </div>
               </button>
+              </>
             )}
           </aside>
         )}
