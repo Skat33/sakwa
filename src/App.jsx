@@ -665,9 +665,11 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 }
 .sidebar button.nav-item { border-radius: 13px; }
 .sidebar .side-profile {
-  background: color-mix(in srgb, var(--surface2) 88%, transparent);
+  /* tło strony (to "szare" spod mlecznych bloków) — odcina się od panelu w każdym motywie */
+  background: var(--bg);
   border: 1px solid var(--line);
   border-radius: 15px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 .sidebar .side-profile:hover { border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
 .sidebar button.nav-item.on {
