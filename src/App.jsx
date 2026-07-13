@@ -8,7 +8,7 @@ import {
   RefreshCw, LogOut, UserRound, Palette, Coins, Repeat, CarFront, Check, Printer,
   Droplets, Gauge, MapPin, Sun, Moon, Percent, Landmark, Music, Baby, Bus,
   ChevronUp, ChevronDown, Menu, RotateCcw, Lock, Eye, EyeOff, ArrowUp, Sparkles, AlertTriangle,
-  ThumbsUp, ThumbsDown, Minus, CalendarDays, Sun, Moon
+  ThumbsUp, ThumbsDown, Minus, CalendarDays
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
