@@ -232,6 +232,25 @@ function scrollTopAll(smooth = false) {
   if (el) { try { el.scrollTo({ top: 0, behavior }); } catch { el.scrollTop = 0; } }
 }
 
+/* Dokument przewija się natywnie (Safari chowa wtedy pasek adresu i staje się on
+   półprzezroczysty). Gdy otwarte jest okno modalne/szuflada, blokujemy tło. */
+let __lockCount = 0, __lockY = 0;
+function lockScroll() {
+  if (__lockCount++ === 0) {
+    __lockY = window.scrollY || 0;
+    const b = document.body.style;
+    b.position = "fixed"; b.top = `-${__lockY}px`; b.left = "0"; b.right = "0"; b.width = "100%";
+  }
+}
+function unlockScroll() {
+  if (--__lockCount <= 0) {
+    __lockCount = 0;
+    const b = document.body.style;
+    b.position = ""; b.top = ""; b.left = ""; b.right = ""; b.width = "";
+    window.scrollTo(0, __lockY);
+  }
+}
+
 function useMedia(query) {
   const [m, setM] = useState(() => window.matchMedia(query).matches);
   useEffect(() => {
@@ -355,10 +374,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 @media (min-width: 1024px) { .toast { bottom: 28px; } }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
-  html, body { height: 100%; overflow: hidden; overscroll-behavior: none; touch-action: none; }
-  .fin-root { position: fixed; inset: 0; height: auto !important; min-height: 0 !important; width: auto; overflow: hidden; }
-  .app-scroll { height: 100%; overflow-y: auto; overflow-x: clip; overscroll-behavior-y: contain; overscroll-behavior-x: none; scrollbar-width: none; touch-action: pan-y; }
-  .app-scroll > * { min-height: calc(100% + 1px); }
+  /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim */
+  html, body { height: auto; min-height: 100%; overflow-x: clip; overflow-y: visible; overscroll-behavior-y: contain; }
+  .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; overflow-x: clip; }
+  .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
   .app-scroll::-webkit-scrollbar { display: none; }
 }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
@@ -665,11 +684,10 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 }
 .sidebar button.nav-item { border-radius: 13px; }
 .sidebar .side-profile {
-  /* tło strony (to "szare" spod mlecznych bloków) — odcina się od panelu w każdym motywie */
-  background: var(--bg);
+  /* zawsze ciemniej niż panel: jasny motyw -> szary, ciemne -> głębsza czerń */
+  background: color-mix(in srgb, var(--bg) 86%, #000);
   border: 1px solid var(--line);
   border-radius: 15px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 .sidebar .side-profile:hover { border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
 .sidebar button.nav-item.on {
@@ -821,6 +839,11 @@ function Sheet({ open, onClose, title, children, wide }) {
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
   }, [open, onClose]);
+  useEffect(() => {
+    if (!open) return;
+    lockScroll();
+    return unlockScroll;
+  }, [open]);
   if (!open) return null;
   return (
     <>
@@ -4029,11 +4052,6 @@ function ThemePicker({ open, onClose, current, onPick }) {
 export default function App() {
   const [phase, setPhase] = useState("loading");
   const [authTheme, setAuthTheme] = useState(() => (loadLocalTheme() === "light" ? "light" : "dark"));
-  useEffect(() => {
-    if (phase === "app") return;
-    const t = THEMES.find((x) => x.id === authTheme) || THEMES[0];
-    document.body.style.background = t.bg;
-  }, [authTheme, phase]);
   const [verifiedSplash, setVerifiedSplash] = useState(false);
   const [recoverySheet, setRecoverySheet] = useState(false);
   const [rp1, setRp1] = useState(""); const [rp2, setRp2] = useState("");
@@ -4269,16 +4287,22 @@ export default function App() {
     if (!/viewport-fit=cover/.test(content)) meta.setAttribute("content", content + ", viewport-fit=cover");
   }, []);
   useEffect(() => {
-    const t = THEMES.find((x) => x.id === (data?.settings?.theme)) || THEMES[0];
-    let meta = document.querySelector('meta[name="theme-color"]');
-    if (!meta) {
-      meta = document.createElement("meta");
-      meta.setAttribute("name", "theme-color");
-      document.head.appendChild(meta);
+    const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
+    const t = THEMES.find((x) => x.id === id) || THEMES[0];
+    let metas = document.querySelectorAll('meta[name="theme-color"]');
+    if (!metas.length) {
+      const m = document.createElement("meta");
+      m.setAttribute("name", "theme-color");
+      document.head.appendChild(m);
+      metas = document.querySelectorAll('meta[name="theme-color"]');
     }
-    meta.setAttribute("content", t.bg);
+    /* nadpisujemy KAŻDY theme-color (także ten z index.html i warianty z media),
+       inaczej Safari bierze pierwszy z brzegu i notch zostaje czarny */
+    metas.forEach((m) => { m.removeAttribute("media"); m.setAttribute("content", t.bg); });
+    document.documentElement.style.colorScheme = t.scheme;
+    document.documentElement.style.background = t.bg;
     document.body.style.background = t.bg;
-  }, [data?.settings?.theme]);
+  }, [phase, data?.settings?.theme, authTheme]);
 
   /* boot: restore session + react to auth events (also fired cross-tab,
      e.g. when the e-mail confirmation link logs in from another tab) */
@@ -4513,6 +4537,7 @@ export default function App() {
     }
   };
   const [drawer, setDrawer] = useState(false);
+  useEffect(() => { if (!drawer) return; lockScroll(); return unlockScroll; }, [drawer]);
   const [profileDirect, setProfileDirect] = useState(false);
   useEffect(() => { if (!settingsSub) setProfileDirect(false); }, [settingsSub, view]);
   const openProfile = () => {
@@ -4624,7 +4649,7 @@ export default function App() {
             )}
           </aside>
         )}
-        <main style={{ flex: 1, minWidth: 0, maxWidth: 1600, margin: "0 auto", padding: isDesktop ? "26px 34px 48px" : "calc(max(env(safe-area-inset-top), 34px) + 10px) 16px calc(34px + max(env(safe-area-inset-bottom), 12px))" }}>
+        <main style={{ flex: 1, minWidth: 0, maxWidth: 1600, margin: "0 auto", padding: isDesktop ? "26px 34px 48px" : "calc(max(env(safe-area-inset-top), 34px) + 10px) 16px calc(104px + max(env(safe-area-inset-bottom), 12px))" }}>
           {isDesktop && (
             <div className="topbar no-print">
               <div className="topbar-greet" style={{ display: "flex", alignItems: "center", gap: 13 }}>
