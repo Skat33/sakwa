@@ -462,7 +462,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   backdrop-filter: blur(12px); padding-bottom: 10px;
 }
 @media (max-width: 1023px) {
-  .sticky-head { top: calc(max(env(safe-area-inset-top), 34px)); padding-top: 10px; margin-top: 0; }
+  .sticky-head { top: 0; padding-top: 10px; margin-top: 0; }
 }
 h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padding-left: 4px; }
 @media (max-width: 1023px) { h1.page-title { padding-left: 10px; } }
@@ -4275,7 +4275,9 @@ export default function App() {
     };
   }, []);
 
-  /* iOS: enable safe-area insets + tint the status bar to match the theme */
+  /* iOS: NIE używamy viewport-fit=cover — dzięki temu treść nie wchodzi pod
+     paski Safari, a Safari maluje górę/dół kolorem motywu (theme-color).
+     To eliminuje szary pasek u góry i białą poświatę na dole (jak panektest.lol). */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
@@ -4283,8 +4285,9 @@ export default function App() {
       meta.setAttribute("name", "viewport");
       document.head.appendChild(meta);
     }
-    const content = meta.getAttribute("content") || "width=device-width, initial-scale=1";
-    if (!/viewport-fit=cover/.test(content)) meta.setAttribute("content", content + ", viewport-fit=cover");
+    const content = (meta.getAttribute("content") || "width=device-width, initial-scale=1")
+      .replace(/,?\s*viewport-fit\s*=\s*cover/gi, "");
+    meta.setAttribute("content", content);
   }, []);
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
@@ -4711,8 +4714,6 @@ export default function App() {
         </main>
       </div>
       </div>
-
-      {!isDesktop && <div className="statusbar-scrim no-print" aria-hidden="true" />}
 
       {!isDesktop && (
         <>
