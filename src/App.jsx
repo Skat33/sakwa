@@ -8,7 +8,7 @@ import {
   RefreshCw, LogOut, UserRound, Palette, Coins, Repeat, CarFront, Check, Printer,
   Droplets, Gauge, MapPin, Sun, Moon, Percent, Landmark, Music, Baby, Bus,
   ChevronUp, ChevronDown, Menu, RotateCcw, Lock, Eye, EyeOff, ArrowUp, Sparkles, AlertTriangle,
-  ThumbsUp, ThumbsDown, Minus, CalendarDays
+  ThumbsUp, ThumbsDown, Minus, CalendarDays, Sun, Moon
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
@@ -55,11 +55,11 @@ const AVATAR_COLORS = ["#34E0A1","#8B7CFF","#4D9FFF","#FF7AC3","#FFB020","#FF6E6
 /* ---------------- themes ---------------- */
 
 const THEMES = [
-  { id: "dark",   label: "Grafit",  scheme: "dark",  bg: "#0B0E14", surface: "#131824", surface2: "#1B2231", surface3: "#232C3E", text: "#E9EDF3", muted: "#8B94A6", line: "rgba(255,255,255,0.07)", accent: "#34E0A1", neg: "#FF6E6E", warn: "#FFD166", violet: "#8B7CFF", info: "#5EA0FF", shadow: "0 8px 30px rgba(0,0,0,0.35)", onAccent: "#06251A" },
-  { id: "light",  label: "Jasny",   scheme: "light", bg: "#D8DDE6", surface: "#ECEFF4", surface2: "#DDE2EB", surface3: "#CDD4E0", text: "#182130", muted: "#5B6779", line: "rgba(20,30,50,0.10)", accent: "#0A9D69", neg: "#D8432A", warn: "#A97400", violet: "#6C5CE7", info: "#2F6FD0", shadow: "0 8px 22px rgba(30,40,70,0.12)", onAccent: "#FFFFFF" },
-  { id: "ocean",  label: "Ocean",   scheme: "dark",  bg: "#06121E", surface: "#0C1E2F", surface2: "#132A3F", surface3: "#1B3750", text: "#E6F0F8", muted: "#7F95A9", line: "rgba(255,255,255,0.07)", accent: "#2ED3B7", neg: "#FF7A6B", warn: "#FFD166", violet: "#7FA8FF", info: "#4EA8FF", shadow: "0 8px 30px rgba(0,0,0,0.4)", onAccent: "#03231D" },
-  { id: "violet", label: "Fiolet",  scheme: "dark",  bg: "#0E0A1C", surface: "#181230", surface2: "#221A42", surface3: "#2C2354", text: "#EDE9F8", muted: "#9A92B8", line: "rgba(255,255,255,0.08)", accent: "#A78BFA", neg: "#FF6E8E", warn: "#FFD166", violet: "#C4B5FD", info: "#6AA6FF", shadow: "0 8px 30px rgba(0,0,0,0.45)", onAccent: "#170D33" },
-  { id: "forest", label: "Las",     scheme: "dark",  bg: "#0A120D", surface: "#111E16", surface2: "#18291E", surface3: "#203627", text: "#E8F2EA", muted: "#87A08D", line: "rgba(255,255,255,0.07)", accent: "#4ADE80", neg: "#FF6E6E", warn: "#FFD166", violet: "#8B7CFF", info: "#53B8FF", shadow: "0 8px 30px rgba(0,0,0,0.4)", onAccent: "#052310" },
+  { id: "dark",   label: "Fiolet",   scheme: "dark",  bg: "#09090F", surface: "#121219", surface2: "#191923", surface3: "#232330", text: "#F1F0F6", muted: "#8E8CA0", line: "rgba(255,255,255,0.07)", accent: "#8B5CF6", neg: "#F87171", warn: "#FBBF24", violet: "#C084FC", info: "#60A5FA", shadow: "0 16px 44px rgba(0,0,0,0.5)", onAccent: "#FFFFFF" },
+  { id: "ocean",  label: "Nexify",   scheme: "dark",  bg: "#060B1A", surface: "#0B1226", surface2: "#111A33", surface3: "#182342", text: "#EDF2FB", muted: "#8593B4", line: "rgba(120,160,255,0.12)", accent: "#3B82F6", neg: "#F87171", warn: "#FBBF24", violet: "#8B5CF6", info: "#38BDF8", shadow: "0 16px 44px rgba(0,0,10,0.55)", onAccent: "#FFFFFF" },
+  { id: "light",  label: "Dzień",    scheme: "light", bg: "#EFEEF6", surface: "#FFFFFF", surface2: "#F4F3FA", surface3: "#E9E7F4", text: "#161328", muted: "#6F6C86", line: "rgba(40,30,90,0.09)", accent: "#7C3AED", neg: "#DC5050", warn: "#B8860B", violet: "#9F67F8", info: "#2F7FE0", shadow: "0 14px 36px rgba(60,40,120,0.10)", onAccent: "#FFFFFF" },
+  { id: "violet", label: "Magenta",  scheme: "dark",  bg: "#0E0812", surface: "#181020", surface2: "#22162D", surface3: "#2D1D3B", text: "#F6EFF8", muted: "#A08BA8", line: "rgba(255,255,255,0.08)", accent: "#D946EF", neg: "#FB7185", warn: "#FBBF24", violet: "#E879F9", info: "#818CF8", shadow: "0 16px 44px rgba(0,0,0,0.55)", onAccent: "#FFFFFF" },
+  { id: "forest", label: "Szmaragd", scheme: "dark",  bg: "#07100C", surface: "#0E1A14", surface2: "#14251C", surface3: "#1C3226", text: "#ECF5EF", muted: "#87A492", line: "rgba(255,255,255,0.06)", accent: "#34D399", neg: "#F87171", warn: "#FBBF24", violet: "#818CF8", info: "#38BDF8", shadow: "0 16px 44px rgba(0,0,0,0.5)", onAccent: "#04281C" },
 ];
 
 const themeBlock = (t) => `
@@ -72,6 +72,7 @@ const themeBlock = (t) => `
   --info:${t.info}; --info-dim:${t.info}22;
   --warn:${t.warn}; --violet:${t.violet};
   --shadow:${t.shadow}; --on-accent:${t.onAccent};
+  --grad-accent: linear-gradient(135deg, ${t.accent} 0%, color-mix(in srgb, ${t.accent} 40%, ${t.info}) 100%);
   --hero-glow: radial-gradient(120% 140% at 15% 0%, ${t.accent}2b, transparent 55%),
                radial-gradient(90% 120% at 100% 100%, ${t.violet}24, transparent 60%);
   --chev: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%23${t.muted.slice(1)}' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
@@ -245,7 +246,7 @@ function useMedia(query) {
 /* ---------------- CSS ---------------- */
 
 const CSS = `
-@import url('https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
 * { box-sizing: border-box; margin: 0; -webkit-tap-highlight-color: transparent; }
 html, body { scrollbar-width: none; -ms-overflow-style: none; overscroll-behavior-x: none; touch-action: pan-y pinch-zoom; }
 html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display: none; }
@@ -253,7 +254,8 @@ html::-webkit-scrollbar, body::-webkit-scrollbar { width: 0; height: 0; display:
 .sheet-body::-webkit-scrollbar { display: none; }
 button, .btn, .cat-tile, .tx-row, .nav-item, .seg button, input, select, textarea, label { touch-action: pan-y; }
 .scroll-x, .scroll-x * { touch-action: pan-x pan-y; }
-.scroll-x { overscroll-behavior-x: contain; }
+.scroll-x { overscroll-behavior-x: contain; padding: 8px 6px 16px; }
+.scroll-x .card { box-shadow: 0 6px 16px rgba(0,0,0,0.16); }
 .seg { max-width: 100%; overflow-x: auto; scrollbar-width: none; }
 .seg::-webkit-scrollbar { display: none; }
 .fin-root {
@@ -331,20 +333,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 .sheet {
   position: fixed; z-index: 950; background: var(--surface);
   border: 1px solid var(--line); display: flex; flex-direction: column;
-  left: 50%; top: 50%; transform: translate(-50%, -50%);
+  inset: 0; margin: auto; height: fit-content;
   width: min(430px, calc(100vw - 28px)); max-height: 82vh; max-height: 82dvh;
   border-radius: 22px; overflow: hidden;
-  animation: modalIn .24s cubic-bezier(.22,.9,.3,1) both;
+  animation: modalIn .3s cubic-bezier(.16,.84,.28,1) backwards;
   box-shadow: 0 20px 60px rgba(0,0,0,0.4);
 }
 @media (min-width: 768px) { .sheet { width: min(560px, 92vw); } }
-@keyframes modalIn { from { opacity: 0; transform: translate(-50%, -46%) scale(.95); } to { opacity: 1; transform: translate(-50%, -50%) scale(1); } }
+@keyframes modalIn { from { opacity: 0; transform: scale(.94) translateY(18px); } to { opacity: 1; transform: none; } }
 .sheet-body { overflow-y: auto; overflow-x: clip; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 6px 20px 22px; touch-action: pan-y; }
 .sheet-body input, .sheet-body select, .sheet-body textarea { min-width: 0; max-width: 100%; }
 input[type="date"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; min-height: 46px; text-align: left; }
 input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .toast {
-  position: fixed; bottom: calc(88px + var(--vv-off, 0px) + env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%);
+  position: fixed; bottom: calc(100px + max(env(safe-area-inset-bottom), 12px)); left: 50%; transform: translateX(-50%);
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   padding: 12px 16px; border-radius: 14px; z-index: 990; display: flex; align-items: center; gap: 14px;
   box-shadow: var(--shadow); animation: fadeIn .22s ease both; font-size: 14px; font-weight: 600;
@@ -441,7 +443,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   backdrop-filter: blur(12px); padding-bottom: 10px;
 }
 @media (max-width: 1023px) {
-  .sticky-head { padding-top: calc(max(env(safe-area-inset-top), 34px) + 12px); margin-top: calc(-1 * (max(env(safe-area-inset-top), 34px) + 24px)); }
+  .sticky-head { top: calc(max(env(safe-area-inset-top), 34px)); padding-top: 10px; margin-top: 0; }
 }
 h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padding-left: 4px; }
 @media (max-width: 1023px) { h1.page-title { padding-left: 10px; } }
@@ -454,10 +456,14 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padd
 .big-num { font-size: clamp(34px, 8vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
 .to-top {
-  position: fixed; right: 16px; bottom: calc(96px + var(--vv-off, 0px) + env(safe-area-inset-bottom)); z-index: 45;
+  position: fixed; left: 16px; right: auto; bottom: calc(28px + max(env(safe-area-inset-bottom), 12px)); z-index: 45;
+}
+@media (min-width: 1024px) {
+  .to-top { left: auto; right: 24px; bottom: 26px; }
+}
+.to-top {
   transition: bottom .28s cubic-bezier(.22,.9,.3,1), opacity .2s ease, transform .2s ease;
 }
-.fin-root[data-nav-hidden="1"] .to-top { bottom: calc(22px + var(--vv-off, 0px) + env(safe-area-inset-bottom)); }
 .to-top {
   width: 46px; height: 46px; border-radius: 16px;
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
@@ -480,6 +486,310 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padd
 }
 @media (prefers-reduced-motion: reduce) {
   * { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+
+
+/* =====================================================================
+   SAKWA v5 — wg referencji użytkownika:
+   MOBILE  = czarno-fioletowy banking (saldo + pigułka + kafle skrótów,
+             pasek z podpisami i uniesionym okrągłym FAB-em z podkreśleniem)
+   DESKTOP = granatowy dashboard (topbar z powitaniem i chipem konta,
+             sidebar z gradientową aktywną pozycją, KPI z ikoną w rogu)
+   Kilka motywów. Zero zmian w funkcjonalności.
+   ===================================================================== */
+.fin-root {
+  font-family: 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+  background:
+    radial-gradient(820px 420px at 82% -12%, color-mix(in srgb, var(--accent) 13%, transparent), transparent 60%),
+    radial-gradient(640px 400px at -8% 108%, color-mix(in srgb, var(--violet) 9%, transparent), transparent 55%),
+    var(--bg);
+}
+.sens, .big-num, .pin-box { font-family: 'Space Grotesk', 'Inter', sans-serif; font-weight: 700; letter-spacing: -0.02em; }
+.big-num { letter-spacing: -0.035em; }
+h1.page-title { font-family: 'Space Grotesk', 'Inter', sans-serif; font-size: 25px; font-weight: 700; letter-spacing: -0.02em; }
+h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; margin-top: 8px; border-radius: 3px; background: var(--grad-accent); }
+
+.card { border-radius: 18px; border: 1px solid var(--line); background: var(--surface); box-shadow: 0 10px 30px rgba(0,0,0,0.22); }
+.btn { border-radius: 13px; }
+.btn-primary {
+  background: var(--grad-accent); border: none; color: var(--on-accent); font-weight: 800;
+  box-shadow: 0 10px 26px color-mix(in srgb, var(--accent) 40%, transparent), inset 0 1px 0 rgba(255,255,255,0.25);
+}
+.btn-primary:not(:disabled):active { transform: scale(0.975); }
+.btn-ghost { background: color-mix(in srgb, var(--surface2) 82%, transparent); border: 1px solid var(--line); }
+.input { border-radius: 13px; background: color-mix(in srgb, var(--surface2) 80%, transparent); border: 1px solid var(--line); transition: border-color .15s, box-shadow .15s; }
+.input:focus { border-color: color-mix(in srgb, var(--accent) 60%, transparent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent); }
+.pin-box { border-radius: 13px; background: color-mix(in srgb, var(--surface2) 70%, transparent); border: 1px solid var(--line); }
+.pin-box.active { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 15%, transparent); }
+.seg { border-radius: 14px; padding: 4px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 78%, transparent); }
+.seg button { border-radius: 10px; }
+.seg button.on { background: var(--grad-accent); color: var(--on-accent); box-shadow: 0 6px 16px color-mix(in srgb, var(--accent) 38%, transparent); }
+.seg button.on.pos {
+  background: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  color: color-mix(in srgb, var(--accent) 88%, var(--text));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--accent) 48%, transparent);
+}
+.seg button.on.neg {
+  background: color-mix(in srgb, var(--neg) 16%, var(--surface));
+  color: color-mix(in srgb, var(--neg) 88%, var(--text));
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--neg) 45%, transparent);
+}
+.chip { border-radius: 999px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 60%, transparent); font-weight: 700; }
+/* warianty semantyczne: tło i ramka wyprowadzone z koloru — czytelne na jasnych i ciemnych motywach */
+.chip-pos {
+  color: color-mix(in srgb, var(--accent) 88%, var(--text));
+  background: color-mix(in srgb, var(--accent) 15%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 42%, transparent);
+}
+.chip-neg {
+  color: color-mix(in srgb, var(--neg) 88%, var(--text));
+  background: color-mix(in srgb, var(--neg) 14%, var(--surface));
+  border-color: color-mix(in srgb, var(--neg) 40%, transparent);
+}
+.hero-status {
+  background: color-mix(in srgb, currentColor 10%, var(--surface));
+  border: 1px solid color-mix(in srgb, currentColor 30%, transparent);
+  border-radius: 12px; padding: 8px 12px;
+}
+.icon-badge { border-radius: 12px; }
+.progress-track { height: 6px; border-radius: 999px; }
+.progress-fill { border-radius: 999px; background-image: var(--grad-accent); }
+.sheet { border-radius: 22px; border: 1px solid var(--line); box-shadow: 0 40px 90px rgba(0,0,0,0.6); }
+.overlay { background: color-mix(in srgb, var(--bg) 42%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+.toast { border-radius: 999px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow); }
+.to-top { border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 88%, transparent); backdrop-filter: blur(10px); }
+
+/* historia jak w referencji 1: płaskie wiersze rozdzielone hairline wewnątrz karty */
+.tx-row { background: transparent; border: none; margin: 0; border-radius: 12px; }
+.tx-list .tx-row:not(:last-child) { border-bottom: 1px solid color-mix(in srgb, var(--line) 75%, transparent); border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
+
+/* --- MOBILE app bar --- */
+.appbar { display: flex; align-items: center; gap: 12px; padding: 2px 2px 16px; }
+.appbar-avatar { width: 42px; height: 42px; border-radius: 14px; border: none; color: #fff; font-weight: 800; font-size: 16px; display: flex; align-items: center; justify-content: center; cursor: pointer; font-family: inherit; flex-shrink: 0; box-shadow: 0 6px 16px rgba(0,0,0,0.3), inset 0 0 0 1px rgba(255,255,255,0.16); }
+.appbar-greet { flex: 1; min-width: 0; }
+.greet-k { font-size: 11.5px; font-weight: 600; color: var(--muted); }
+.greet-n { font-size: 16.5px; font-weight: 800; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.brandmark { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 12px; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
+
+/* --- DESKTOP topbar --- */
+.topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 2px 24px; }
+.user-chip { display: flex; align-items: center; gap: 10px; padding: 7px 12px 7px 7px; border-radius: 14px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 60%, transparent); cursor: pointer; font-family: inherit; color: var(--text); max-width: 240px; }
+.user-chip:hover { border-color: color-mix(in srgb, var(--accent) 40%, transparent); }
+.user-chip .appbar-avatar { cursor: pointer; }
+
+/* --- HERO (obraz 1): saldo, pigułka, kafle --- */
+.hero-balance.hero-v2 {
+  text-align: left; padding: 22px 20px 20px; border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  background:
+    radial-gradient(430px 210px at 92% -32%, color-mix(in srgb, var(--accent) 26%, transparent), transparent 66%),
+    linear-gradient(168deg, color-mix(in srgb, var(--accent) 9%, var(--surface)), var(--surface) 56%);
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--accent) 7%, rgba(0,0,0,0.18));
+}
+.hero-v2::before { background: none; content: none; }
+.hero-kicker { display: flex; align-items: center; gap: 8px; text-align: left; font-size: 12.5px; font-weight: 600; letter-spacing: 0.01em; text-transform: none; color: var(--muted); margin-bottom: 6px; }
+.hero-eye2 {
+  position: absolute; top: -4px; right: -4px; z-index: 2;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px solid color-mix(in srgb, var(--accent) 42%, var(--line));
+  background: color-mix(in srgb, var(--surface2) 62%, transparent);
+  color: var(--muted); cursor: pointer; transition: color .15s ease, border-color .15s ease;
+}
+.hero-eye2:active { color: var(--accent); }
+.hero-num { line-height: 1.06; }
+.hero-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: flex-start; margin-top: 12px; }
+.hero-status { justify-content: flex-start; text-align: left; margin-top: 12px; font-size: 12.5px; }
+.hero-add { margin-top: 16px; padding: 12px 20px; }
+.quick-row { display: flex; flex-direction: row; align-items: stretch; justify-content: space-between; gap: 10px; border-top: none; padding-top: 0; margin-top: 18px; }
+.hero-extra { display: none; }
+.hero-ratio { margin-top: 18px; }
+.hr-track { height: 10px; border-radius: 999px; background: color-mix(in srgb, var(--neg) 22%, var(--surface2)); overflow: hidden; }
+.hr-fill { height: 100%; border-radius: 999px; background: var(--grad-accent); transition: width .6s cubic-bezier(.22,.9,.3,1); }
+.hr-caption { display: flex; justify-content: space-between; margin-top: 7px; font-size: 11.5px; font-weight: 800; }
+@media (min-width: 1024px) {
+  .quick-row, .hero-add, .hero-ratio { display: none; }
+  .hero-extra {
+    display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
+    margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line);
+  }
+  .hx-cell { min-width: 0; }
+  .hx-l { font-size: 11.5px; font-weight: 700; color: var(--muted); margin-bottom: 4px; }
+  .hx-v { font-family: 'Space Grotesk', sans-serif; font-size: 20px; font-weight: 700; letter-spacing: -0.02em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+}
+/* (6) PC: subtelne powiększenie kart pod kursorem */
+@media (min-width: 1024px) {
+  .card, .hero-balance { transition: transform .18s ease, box-shadow .18s ease; }
+  .card:hover, .hero-balance:hover { transform: scale(1.012); }
+}
+.quick {
+  display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+  flex: 1; min-width: 0; gap: 7px; padding: 0; margin: 0;
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  font-size: 11.5px; font-weight: 700; letter-spacing: 0.01em; color: var(--muted);
+}
+.quick > span:last-child { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.quick-ic {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; height: 54px; border-radius: 16px;
+  border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface2) 82%, transparent);
+  color: var(--accent);
+  transition: transform .15s ease, border-color .15s ease;
+}
+.quick:active .quick-ic { transform: scale(0.95); }
+.quick:hover .quick-ic { border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+/* --- KPI (obraz 2): etykieta z lewej, ikonka w kolorowym kwadracie z prawej --- */
+.stat-card { padding: 15px 16px 14px; }
+.stat-kicker { display: flex; flex-direction: row-reverse; align-items: center; justify-content: space-between; gap: 8px; font-size: 11.5px; font-weight: 700; letter-spacing: 0; text-transform: none; color: var(--muted); margin-bottom: 9px; }
+.stat-kicker svg { width: 27px; height: 27px; padding: 6px; border-radius: 9px; background: color-mix(in srgb, var(--accent) 15%, transparent); color: var(--accent); flex-shrink: 0; }
+.stat-val { line-height: 1.12; }
+@media (max-width: 1023px) {
+  .stat-grid { display: flex; overflow-x: auto; gap: 12px; scroll-snap-type: x mandatory; margin: 0 -16px; padding: 2px 16px 8px; scroll-padding: 0 16px; scrollbar-width: none; }
+  .stat-grid::-webkit-scrollbar { display: none; }
+  .stat-grid > * { min-width: 100%; flex: 0 0 100%; scroll-snap-align: start; }
+  .stat-grid, .stat-grid * { touch-action: pan-x pan-y; }
+}
+
+.sec-head { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; margin-bottom: 14px; }
+.sec-kicker { font-size: 11px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: color-mix(in srgb, var(--accent) 78%, var(--muted)); margin-bottom: 2px; }
+.sec-title { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 18px; }
+.sec-side { font-size: 12px; font-weight: 700; color: var(--accent); }
+
+/* --- SIDEBAR (obraz 2): aktywna pozycja = gradientowa pastylka --- */
+.sidebar {
+  background: color-mix(in srgb, var(--surface) 68%, var(--bg));
+  border-right: 1px solid var(--line);
+  box-shadow: 14px 0 34px -18px rgba(0, 0, 0, 0.35);
+}
+.sidebar button.nav-item { border-radius: 13px; }
+.sidebar button.nav-item.on {
+  background: var(--grad-accent); color: var(--on-accent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+/* --- DOLNY PASEK (obraz 1): podpisy, fioletowy aktywny z podkreśleniem, uniesiony FAB --- */
+.bottom-nav {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2);
+  border-top: 1px solid var(--line); box-shadow: 0 -12px 34px rgba(0,0,0,0.3);
+}
+.nav-lbl { display: block; font-size: 10px; font-weight: 700; margin-top: 3px; }
+.bottom-nav button { position: relative; }
+.bottom-nav button.on { color: var(--accent); }
+.bottom-nav button.on::after {
+  content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: 2px;
+  width: 16px; height: 3px; border-radius: 3px; background: var(--grad-accent);
+}
+.fab {
+  position: fixed; right: 18px; bottom: calc(26px + max(env(safe-area-inset-bottom), 12px)); z-index: 40;
+  width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--grad-accent); color: var(--on-accent);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 1.5px 0 rgba(255,255,255,0.35);
+  transition: transform .15s ease;
+}
+.fab:active { transform: scale(0.93); }
+.drawer-overlay {
+  position: fixed; inset: 0; z-index: 1080;
+  background: color-mix(in srgb, var(--bg) 30%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  opacity: 0; pointer-events: none; transition: opacity .25s ease;
+}
+.drawer-overlay.open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; bottom: 0; left: 0; z-index: 1090;
+  width: min(304px, 82vw); background: color-mix(in srgb, var(--surface) 68%, var(--bg)); border-right: 1px solid var(--line);
+  transform: translateX(-104%); transition: transform .3s cubic-bezier(.22,.9,.3,1);
+  display: flex; flex-direction: column;
+  padding: calc(max(env(safe-area-inset-top), 34px) + 8px) 0 calc(max(env(safe-area-inset-bottom), 12px) + 8px);
+  box-shadow: 24px 0 60px rgba(0,0,0,0.45);
+}
+.drawer.open { transform: translateX(0); }
+.drawer-head { display: flex; align-items: center; gap: 12px; padding: 6px 16px 16px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
+.drawer-foot {
+  display: flex; align-items: center; gap: 12px; margin: 10px 12px 0; padding: 12px;
+  border: 1px solid var(--line); border-radius: 15px; background: color-mix(in srgb, var(--surface2) 70%, transparent);
+  color: var(--text); font-family: inherit; cursor: pointer; width: calc(100% - 24px); box-sizing: border-box;
+}
+.drawer-list { flex: 1; overflow-y: auto; padding: 0 14px; display: flex; flex-direction: column; gap: 5px; overscroll-behavior: contain; box-sizing: border-box; }
+.drawer-item {
+  display: flex; align-items: center; gap: 12px; width: 100%; box-sizing: border-box;
+  min-height: 46px; padding: 12px 14px; margin: 0;
+  border-radius: 13px; border: none; background: none; color: var(--muted);
+  font-family: inherit; font-size: 14px; font-weight: 700; cursor: pointer; text-align: left;
+}
+.drawer-item.on {
+  background: var(--grad-accent);
+  color: var(--on-accent);
+  box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 32%, transparent), inset 0 1px 0 rgba(255,255,255,0.22);
+}
+.drawer-item:not(.on):active { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+
+.statusbar-scrim {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 30; pointer-events: none;
+  height: calc(max(env(safe-area-inset-top), 34px));
+  background: linear-gradient(180deg, var(--bg) 62%, transparent);
+}
+.pass-eye {
+  position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
+  width: 34px; height: 34px; border-radius: 10px; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--surface3) 70%, transparent); color: var(--muted);
+  touch-action: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+}
+.pass-eye:active { color: var(--accent); }
+
+.appbar, .topbar { position: relative; }
+.appbar-month {
+  position: absolute; left: 50%; top: 21px; transform: translate(-50%, -50%); text-align: center;
+  font-size: 14.5px; font-weight: 800; color: var(--text); white-space: nowrap;
+  padding: 8px 18px; border-radius: 999px; border: 1px solid var(--line);
+  background: color-mix(in srgb, var(--surface2) 88%, transparent);
+  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
+  text-transform: capitalize; pointer-events: none; z-index: 1;
+}
+@media (min-width: 1024px) {
+  .appbar-month {
+    position: static; transform: none; pointer-events: none;
+    font-size: clamp(14.5px, 1.05vw, 17px);
+    padding: 9px clamp(18px, 2.6vw, 40px);
+  }
+}
+.top-ic {
+  width: 42px; height: 42px; border-radius: 13px; flex-shrink: 0;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 72%, transparent);
+  color: var(--muted); cursor: pointer; transition: border-color .15s ease, color .15s ease;
+}
+.top-ic:hover { border-color: color-mix(in srgb, var(--accent) 45%, transparent); color: var(--accent); }
+.top-ic-on {
+  color: var(--accent);
+  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+.theme-toggle {
+  position: fixed; top: calc(max(env(safe-area-inset-top), 12px) + 10px); right: 16px; z-index: 60;
+  width: 42px; height: 42px; border-radius: 14px;
+  display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 85%, transparent);
+  color: var(--muted); cursor: pointer; backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: var(--shadow);
+}
+.theme-toggle:hover { color: var(--accent); border-color: color-mix(in srgb, var(--accent) 45%, transparent); }
+
+.rail-dots { display: none; }
+@media (max-width: 1023px) {
+  .rail-dots { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
+  .rail-dots span { width: 6px; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 35%, transparent); transition: all .25s ease; }
+  .rail-dots span.on { width: 18px; background: var(--grad-accent); }
+}
+
+.nav-plus {
+  width: 56px; height: 56px; border-radius: 50%; margin-top: -26px;
+  background: var(--grad-accent); color: var(--on-accent);
+  box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 1.5px 0 rgba(255,255,255,0.35),
+              0 0 0 6px color-mix(in srgb, var(--bg) 85%, transparent);
 }
 `;
 
@@ -588,14 +898,9 @@ function NumInput({ value, onChange, placeholder, error, big, suffix }) {
 function StatCard({ icon: I, label, value, sub, tone, trend }) {
   const toneColor = tone === "pos" ? "var(--accent)" : tone === "neg" ? "var(--neg)" : tone === "info" ? "var(--info)" : "var(--text)";
   return (
-    <div className="card" style={{ padding: 16 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <div className="icon-badge" style={{ width: 30, height: 30, background: "var(--surface2)", color: "var(--muted)" }}>
-          <I size={15} />
-        </div>
-        <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{label}</span>
-      </div>
-      <div className="sens" style={{ fontSize: fit(value, 20, 13, 12), fontWeight: 800, letterSpacing: "-0.02em", color: toneColor }}>{value}</div>
+    <div className="card stat-card">
+      <div className="stat-kicker"><I size={13} strokeWidth={2.4} /><span>{label}</span></div>
+      <div className="sens stat-val" style={{ fontSize: fit(value, 25, 15, 12), color: toneColor }}>{value}</div>
       {(sub || trend != null) && (
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 5, fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>
           {trend != null && !isNaN(trend) && isFinite(trend) && (
@@ -686,7 +991,8 @@ function CategoryGrid({ categories, transactions, type, value, onChange }) {
     return u;
   }, [transactions]);
   const sorted = [...list].sort((a, b) => (usage[b.id] || 0) - (usage[a.id] || 0));
-  const compact = sorted.slice(0, 7);
+  const fitsOneLine = sorted.length <= 4; // 4 kolumny siatki => jedna linia, kafel "Więcej" zbędny
+  const compact = fitsOneLine ? sorted : sorted.slice(0, 7);
   const selected = list.find((c) => c.id === value);
   const showSelectedExtra = selected && !compact.includes(selected);
   const filtered = sorted.filter((c) => c.name.toLowerCase().includes(q.toLowerCase()));
@@ -698,14 +1004,16 @@ function CategoryGrid({ categories, transactions, type, value, onChange }) {
             <CatIcon cat={c} size={36} /><span>{c.name}</span>
           </button>
         ))}
-        <button type="button" className="cat-tile" onClick={() => setFull(true)}>
-          <div className="icon-badge" style={{ width: 36, height: 36, background: "var(--surface3)", color: "var(--muted)" }}>
-            <LayoutGrid size={17} />
-          </div>
-          <span>Więcej</span>
-        </button>
+        {!fitsOneLine && (
+          <button type="button" className="cat-tile" onClick={() => setFull(true)}>
+            <div className="icon-badge" style={{ width: 36, height: 36, background: "var(--surface3)", color: "var(--muted)" }}>
+              <LayoutGrid size={17} />
+            </div>
+            <span>Więcej</span>
+          </button>
+        )}
       </div>
-      <Sheet open={full} onClose={() => setFull(false)} title="Wszystkie kategorie">
+      <Sheet open={full} onClose={() => setFull(false)} title="Wszystkie kategorie" wide>
         <div style={{ position: "relative", marginBottom: 14 }}>
           <Search size={16} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
           <input className="input" style={{ paddingLeft: 38 }} placeholder="Szukaj kategorii…" value={q} onChange={(e) => setQ(e.target.value)} autoFocus={AUTOF} />
@@ -885,6 +1193,49 @@ function catSlices(txs, categories, toMain, limit = 5) {
   return arr;
 }
 
+function StatRail({ children }) {
+  const ref = useRef(null);
+  const [idx, setIdx] = useState(0);
+  const count = React.Children.count(children);
+  const onScroll = () => {
+    const el = ref.current;
+    if (!el || count < 2) return;
+    const max = el.scrollWidth - el.clientWidth;
+    if (max <= 0) return;
+    setIdx(Math.min(count - 1, Math.max(0, Math.round((el.scrollLeft / max) * (count - 1)))));
+  };
+  return (
+    <div>
+      <div className="stat-grid stagger" ref={ref} onScroll={onScroll}>{children}</div>
+      {count > 1 && (
+        <div className="rail-dots" aria-hidden="true">
+          {Array.from({ length: count }).map((_, i) => <span key={i} className={i === idx ? "on" : ""} />)}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PasswordInput({ value, onChange, error, placeholder, autoComplete, onKeyDown, autoFocus }) {
+  const [show, setShow] = useState(false);
+  const tRef = useRef(null);
+  useEffect(() => () => clearTimeout(tRef.current), []);
+  const hold = (e) => { e.preventDefault(); clearTimeout(tRef.current); setShow(true); };
+  const release = () => { clearTimeout(tRef.current); tRef.current = setTimeout(() => setShow(false), 1200); };
+  return (
+    <div style={{ position: "relative" }}>
+      <input type={show ? "text" : "password"} className={`input ${error ? "err" : ""}`}
+        style={{ paddingRight: 46 }} placeholder={placeholder} autoComplete={autoComplete}
+        value={value} autoFocus={autoFocus} onChange={onChange} onKeyDown={onKeyDown} />
+      <button type="button" className="pass-eye" aria-label="Przytrzymaj, aby odsłonić hasło" tabIndex={-1}
+        onPointerDown={hold} onPointerUp={release} onPointerLeave={release} onPointerCancel={release}
+        onContextMenu={(e) => e.preventDefault()}>
+        {show ? <Eye size={16} /> : <EyeOff size={16} />}
+      </button>
+    </div>
+  );
+}
+
 function PinDigits({ value, onChange, error, autoFocus }) {
   const [reveal, setReveal] = useState(false);
   const tRef = useRef(null);
@@ -916,7 +1267,7 @@ function PinDigits({ value, onChange, error, autoFocus }) {
   );
 }
 
-function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDeleteTx }) {
+function Dashboard({ data, helpers, go, update, toast, userEmail, onAdd, onEditTx, onDeleteTx }) {
   const { toMain, main } = helpers;
   const now = new Date();
   const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
@@ -1023,31 +1374,45 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div className="hero-balance">
+      <div className="hero-balance hero-v2">
         <div style={{ position: "relative" }}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "var(--muted)" }}>Saldo całkowite</div>
-            <button className="btn btn-ghost" style={{ padding: 8, borderRadius: 12 }} aria-label={hidden ? "Wyłącz tryb incognito" : "Włącz tryb incognito"}
-              onClick={toggleIncognito}>
-              {hidden ? <EyeOff size={17} /> : <Eye size={17} />}
-            </button>
+          <button className="hero-eye2" aria-label={hidden ? "Wyłącz tryb incognito" : "Włącz tryb incognito"} onClick={toggleIncognito}>
+            {hidden ? <EyeOff size={18} /> : <Eye size={18} />}
+          </button>
+          <div className="hero-kicker">Saldo całkowite</div>
+          <div className="big-num sens hero-num" style={{ fontSize: `min(${fit(fmtMoney(balance, main), 52, 26, 12)}px, 11.5vw)` }}>{fmtMoney(animBalance, main)}</div>
+          <div className="sens hero-chips">
+            <span className="chip chip-pos"><ArrowUpRight size={14} /> {fmtMoney(inc, main, true)} {periodLabel}</span>
+            <span className="chip chip-neg"><ArrowDownRight size={14} /> {fmtMoney(exp, main, true)} {periodLabel}</span>
           </div>
-          <div className="big-num hero-num-grad sens" style={{ fontSize: `min(${fit(fmtMoney(balance, main), 46, 24, 12)}px, 9.5vw)` }}>{fmtMoney(animBalance, main)}</div>
-          <div className="sens" style={{ display: "flex", gap: 16, marginTop: 14, flexWrap: "wrap" }}>
-            <span className="chip" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}>
-              <ArrowUpRight size={14} /> {fmtMoney(inc, main, true)} {periodLabel}
-            </span>
-            <span className="chip" style={{ background: "var(--neg-dim)", color: "var(--neg)" }}>
-              <ArrowDownRight size={14} /> {fmtMoney(exp, main, true)} {periodLabel}
-            </span>
+          <div className="hero-status" style={{ color: saldoStatus.color }}>
+            <saldoStatus.icon size={14} style={{ flexShrink: 0 }} /> <span>{saldoStatus.text}</span>
           </div>
-          <div className="chip" style={{ background: saldoStatus.bg, color: saldoStatus.color, marginTop: 12, maxWidth: "100%", whiteSpace: "normal", lineHeight: 1.4, padding: "7px 12px" }}>
-            <saldoStatus.icon size={15} style={{ flexShrink: 0 }} /> <span>{saldoStatus.text}</span>
+          <div className="hero-ratio sens">
+            <div className="hr-track">
+              <div className="hr-fill" style={{ width: `${inc + exp > 0 ? (inc / (inc + exp)) * 100 : 50}%` }} />
+            </div>
+            <div className="hr-caption">
+              <span style={{ color: "var(--accent)" }}>wpłaty {inc + exp > 0 ? ((inc / (inc + exp)) * 100).toFixed(0) : 50}%</span>
+              <span style={{ color: "var(--neg)" }}>wydatki {inc + exp > 0 ? ((exp / (inc + exp)) * 100).toFixed(0) : 50}%</span>
+            </div>
+          </div>
+          <div className="hero-extra sens">
+            <div className="hx-cell"><div className="hx-l">Bilans okresu</div><div className="hx-v" style={{ color: curBal >= 0 ? "var(--accent)" : "var(--neg)" }}>{fmtMoney(curBal, main, true)}</div></div>
+            <div className="hx-cell"><div className="hx-l">Prognoza salda</div><div className="hx-v" style={{ color: forecast >= 0 ? "var(--info)" : "var(--neg)" }}>{fmtMoney(forecast, main, true)}</div></div>
+            <div className="hx-cell"><div className="hx-l">Stopa oszczędności</div><div className="hx-v">{Math.max(0, savingsRate).toFixed(0)}%</div></div>
+            <div className="hx-cell"><div className="hx-l">Dni do końca</div><div className="hx-v">{daysRemaining}</div></div>
+          </div>
+          <div className="quick-row">
+            <button className="quick" onClick={() => go("history")}><span className="quick-ic"><List size={19} /></span><span>Historia</span></button>
+            <button className="quick" onClick={() => go("goals")}><span className="quick-ic"><Target size={19} /></span><span>Cele</span></button>
+            <button className="quick" onClick={() => go("stats")}><span className="quick-ic"><BarChart3 size={19} /></span><span>Analizy</span></button>
+            <button className="quick" onClick={() => go("reports")}><span className="quick-ic"><FileText size={19} /></span><span>Raporty</span></button>
           </div>
         </div>
       </div>
 
-      <div className="stat-grid stagger">
+      <StatRail>
         <StatCard icon={ArrowUpRight} label="Przychody" value={fmtMoney(inc, main, true)} tone="pos" trend={trend(inc, pInc)} sub={vsLabel} />
         <StatCard icon={ArrowDownRight} label="Wydatki" value={fmtMoney(exp, main, true)} tone="neg" trend={trend(exp, pExp)} sub={vsLabel} />
         <StatCard icon={PiggyBank} label="Bilans miesiąca" value={fmtMoney(curBal, main, true)} tone="info" trend={balPct}
@@ -1055,13 +1420,13 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
         <StatCard icon={Percent} label="Stopa oszczędności" value={`${Math.max(0, savingsRate).toFixed(0)}%`} sub={inc > 0 ? "przychodów zostaje" : "brak przychodów"} />
         <StatCard icon={TrendingUp} label="Prognoza salda" value={fmtMoney(forecast, main, true)} tone={forecast >= balance ? "pos" : "neg"}
           sub={period ? `koniec okresu za ~${daysRemaining} dni · tempo wydatków` : "na koniec miesiąca · tempo wydatków + cykliczne"} />
-      </div>
+      </StatRail>
 
       {budgetRows.length > 0 && (
         <div className="card" style={{ padding: 18 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>Budżety miesięczne</div>
-            <span style={{ fontSize: 12, fontWeight: 700, color: "var(--muted)" }}>{MONTHS_FULL[now.getMonth()].toLowerCase()}</span>
+          <div className="sec-head">
+            <div><div className="sec-kicker">Kontrola wydatków</div><div className="sec-title">Budżety miesięczne</div></div>
+            <span className="sec-side">{MONTHS_FULL[now.getMonth()].toLowerCase()}</span>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 14 }}>
             {budgetRows.map(({ cat, limit, spent, ratio }) => {
@@ -1146,7 +1511,7 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onEditTx, onDe
           a tryb incognito wyłączony. Przy następnym włączeniu ustawisz nowy kod.
         </p>
         <Field label="Hasło do konta" error={pinErr}>
-          <input type="password" className={`input ${pinErr ? "err" : ""}`} value={fpPass} autoFocus={AUTOF}
+          <PasswordInput error={pinErr} value={fpPass} autoFocus={AUTOF}
             onChange={(e) => { setFpPass(e.target.value); setPinErr(""); }} onKeyDown={(e) => e.key === "Enter" && forgotPin()} />
         </Field>
         <div style={{ display: "flex", gap: 10 }}>
@@ -1968,7 +2333,9 @@ function Goals({ data, helpers, update, toast, confirm }) {
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 8, marginBottom: 10 }}>
           <div style={{ fontWeight: 800, fontSize: fit(g.name, 15, 12, 18), minWidth: 0 }}>{g.name}</div>
           <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 5, flexShrink: 0 }}>
-            {g.deadline && <span className="chip" style={{ background: "var(--info-dim)", color: "var(--info)" }}><Calendar size={12} /> {fmtDate(g.deadline)}</span>}
+            {g.deadline
+              ? <span className="chip" style={{ background: "var(--info-dim)", color: "var(--info)" }}><Calendar size={12} /> {fmtDate(g.deadline)}</span>
+              : !done && <span className="chip" style={{ background: "var(--surface2)", color: "var(--muted)" }}><Calendar size={12} /> Brak daty</span>}
             {done && <span className="chip" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}><Check size={13} /> Osiągnięty</span>}
           </div>
         </div>
@@ -1981,9 +2348,11 @@ function Goals({ data, helpers, update, toast, confirm }) {
         <div style={{ fontSize: 12.5, fontWeight: 700, color: "var(--muted)" }}>
           {pct.toFixed(0)}% zrealizowane · brakuje {fmtMoney(missing, main, true)}
         </div>
-        {!done && monthsLeft && missing > 0 && (
-          <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: "var(--accent)" }}>
-            Odkładaj ~{fmtMoney(missing / monthsLeft, main, true)}/mies., aby zdążyć na czas
+        {!done && missing > 0 && (
+          <div style={{ marginTop: 8, fontSize: 12.5, fontWeight: 700, color: monthsLeft ? "var(--accent)" : "var(--muted)" }}>
+            {monthsLeft
+              ? <>odkładaj {fmtMoney(missing / monthsLeft, main, true)} / mies., aby zdążyć</>
+              : <>Bez pośpiechu — odkładasz we własnym tempie 😌</>}
           </div>
         )}
         {full && (
@@ -2814,8 +3183,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
 
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
-        <br />Sakwa · kompilacja 30 · baza Supabase
-      </p>
+        <br />Sakwa · kompilacja 31 · baza Supabase</p>
     </div>
   );
 }
@@ -3143,7 +3511,7 @@ function Auth({ onAuthed, onAwaitingVerify, onAwaitingReset }) {
               <input type="email" className={`input ${errs.email ? "err" : ""}`} placeholder="ty@przyklad.pl" autoCapitalize="none" autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             </Field>
             <Field label="Hasło" error={errs.pass}>
-              <input type="password" className={`input ${errs.pass ? "err" : ""}`} placeholder={mode === "register" ? "silne hasło" : "twoje hasło"} autoComplete={mode === "register" ? "new-password" : "current-password"} value={pass}
+              <PasswordInput error={errs.pass} placeholder={mode === "register" ? "silne hasło" : "twoje hasło"} autoComplete={mode === "register" ? "new-password" : "current-password"} value={pass}
                 onChange={(e) => setPass(e.target.value)} onKeyDown={(e) => e.key === "Enter" && submit()} />
               {mode === "register" && !errs.pass && (
                 <div style={{ fontSize: 11.5, fontWeight: 600, color: "var(--muted)", marginTop: 6, lineHeight: 1.5 }}>
@@ -3659,6 +4027,12 @@ function ThemePicker({ open, onClose, current, onPick }) {
 
 export default function App() {
   const [phase, setPhase] = useState("loading");
+  const [authTheme, setAuthTheme] = useState(() => (loadLocalTheme() === "light" ? "light" : "dark"));
+  useEffect(() => {
+    if (phase === "app") return;
+    const t = THEMES.find((x) => x.id === authTheme) || THEMES[0];
+    document.body.style.background = t.bg;
+  }, [authTheme, phase]);
   const [verifiedSplash, setVerifiedSplash] = useState(false);
   const [recoverySheet, setRecoverySheet] = useState(false);
   const [rp1, setRp1] = useState(""); const [rp2, setRp2] = useState("");
@@ -3942,6 +4316,7 @@ export default function App() {
     setSessionUser(su);
     setUserId(su.id);
     await loadUserData(su);
+    navStackRef.current = [];
     setView("dashboard"); setSettingsSub(null);
     setPhase("app");
     if (CAME_FROM_RECOVERY) {
@@ -4105,7 +4480,49 @@ export default function App() {
       update((d) => ({ ...d, transactions: [...d.transactions, tx], refuels: linkedRefuel ? [...d.refuels, linkedRefuel] : d.refuels })));
   };
 
-  const go = (v) => { setView(v); setSettingsSub(null); scrollTopAll(); };
+  const navStackRef = useRef([]);
+  const go = (v) => {
+    setView((cur) => {
+      if (cur !== v) {
+        navStackRef.current.push(cur);
+        if (navStackRef.current.length > 25) navStackRef.current.shift();
+      }
+      return v;
+    });
+    setProfileDirect(false);
+    setSettingsSub(null);
+    scrollTopAll();
+  };
+  const periodMonthLabel = useMemo(() => {
+    if (!data) return "";
+    const per = getPeriod(data);
+    const d = per ? new Date(per.from) : new Date();
+    return MONTHS_FULL[d.getMonth()];
+  }, [data]);
+  const goBack = () => {
+    const prev = navStackRef.current.pop();
+    if (prev) {
+      setView(prev);
+      setSettingsSub(null);
+      scrollTopAll();
+    } else {
+      setView("dashboard");
+      setSettingsSub(null);
+      scrollTopAll();
+    }
+  };
+  const [drawer, setDrawer] = useState(false);
+  const [profileDirect, setProfileDirect] = useState(false);
+  useEffect(() => { if (!settingsSub) setProfileDirect(false); }, [settingsSub, view]);
+  const openProfile = () => {
+    setProfileDirect(true);
+    setView((cur) => {
+      if (cur !== "settings") navStackRef.current.push(cur);
+      return "settings";
+    });
+    setSettingsSub("profile");
+    scrollTopAll();
+  };
 
   /* keyboard shortcut Ctrl+K → new transaction */
   useEffect(() => {
@@ -4127,8 +4544,15 @@ export default function App() {
 
   if (phase === "auth") {
     return (
-      <div className="fin-root" data-theme="dark">
+      <div className="fin-root" data-theme={authTheme}>
         <style>{CSS}</style>
+        <button className="theme-toggle no-print" aria-label="Przełącz motyw jasny/ciemny" onClick={() => {
+          const next = authTheme === "light" ? "dark" : "light";
+          setAuthTheme(next);
+          saveLocalTheme(next);
+        }}>
+          {authTheme === "light" ? <Moon size={17} /> : <Sun size={17} />}
+        </button>
         <div className="app-scroll">
           <Auth onAuthed={enterApp} onAwaitingVerify={() => { awaitingVerifyRef.current = true; }} onAwaitingReset={() => { awaitingResetRef.current = true; }} />
         </div>
@@ -4140,7 +4564,7 @@ export default function App() {
   const navOrder = normalizeNav(data.settings.navOrder).filter((id) => NAV_META[id]);
   const content = (() => {
     switch (view) {
-      case "dashboard": return <Dashboard data={data} helpers={helpers} go={go} update={update} toast={toast} userEmail={user?.login} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
+      case "dashboard": return <Dashboard data={data} helpers={helpers} go={go} update={update} toast={toast} userEmail={user?.login} onAdd={() => setTxForm(true)} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "history": return <History data={data} helpers={helpers} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "stats": return <Stats data={data} helpers={helpers} go={go} update={update} toast={toast} />;
       case "reports": return <Reports data={data} helpers={helpers} go={go} toast={toast} confirm={confirm} update={update} />;
@@ -4167,11 +4591,11 @@ export default function App() {
       <div style={{ display: "flex" }}>
         {isDesktop && (
           <aside className="sidebar no-print">
-            <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 14px 20px" }}>
-              <div className="icon-badge" style={{ background: "var(--accent-dim)", color: "var(--accent)" }}><Wallet size={20} /></div>
-              <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: "-0.02em" }}>Sakwa</span>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "6px 14px 16px" }}>
+              <div className="icon-badge" style={{ width: 48, height: 48, borderRadius: 15, background: "var(--grad-accent)", color: "var(--on-accent)", boxShadow: "0 8px 20px color-mix(in srgb, var(--accent) 32%, transparent)" }}><Wallet size={25} /></div>
+              <span style={{ fontWeight: 800, fontSize: 22, letterSpacing: "-0.02em", fontFamily: "'Space Grotesk', sans-serif" }}>Sakwa</span>
             </div>
-            <button className="btn btn-primary" style={{ margin: "0 0 14px" }} onClick={() => setQuickAdd(true)}><Plus size={16} /> Dodaj</button>
+            <div style={{ height: 1, background: "var(--line)", margin: "0 12px 20px" }} />
             {navOrder.filter((id) => id !== "more").map((id) => {
               const m = NAV_META[id]; const I = m.icon;
               return (
@@ -4184,7 +4608,7 @@ export default function App() {
             {user && (
               <button className="nav-item" aria-label="Otwórz profil"
                 style={{ display: "flex", alignItems: "center", gap: 10, padding: "10px 14px" }}
-                onClick={() => { setView("settings"); setSettingsSub("profile"); scrollTopAll(); }}>
+                onClick={openProfile}>
                 <div style={{ width: 34, height: 34, borderRadius: 12, background: user.avatarColor, color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontWeight: 800, fontSize: 14, flexShrink: 0 }}>
                   {user.name.charAt(0).toUpperCase()}
                 </div>
@@ -4196,28 +4620,107 @@ export default function App() {
             )}
           </aside>
         )}
-        <main style={{ flex: 1, minWidth: 0, maxWidth: 1380, margin: "0 auto", padding: isDesktop ? "28px 40px 48px" : "calc(max(env(safe-area-inset-top), 34px) + 24px) 16px calc(118px + max(env(safe-area-inset-bottom), 10px))" }}>
+        <main style={{ flex: 1, minWidth: 0, maxWidth: 1600, margin: "0 auto", padding: isDesktop ? "26px 34px 48px" : "calc(max(env(safe-area-inset-top), 34px) + 10px) 16px calc(34px + max(env(safe-area-inset-bottom), 12px))" }}>
+          {isDesktop && (
+            <div className="topbar no-print">
+              <div className="topbar-greet" style={{ display: "flex", alignItems: "center", gap: 13 }}>
+                <div className="icon-badge" style={{ width: 46, height: 46, borderRadius: 15, background: "var(--grad-accent)", color: "var(--on-accent)", boxShadow: "0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent)" }}>
+                  <Wallet size={23} />
+                </div>
+                <div>
+                  <div className="greet-n" style={{ fontSize: 24, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em" }}>Sakwa</div>
+                  <div className="greet-k" style={{ fontSize: 12.5 }}>Twoje centrum finansów</div>
+                </div>
+              </div>
+              <div style={{ flex: 1, minWidth: 12 }} />
+              <div className="appbar-month">{periodMonthLabel}</div>
+              <div style={{ flex: 1, minWidth: 12 }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                <button className="btn btn-primary" onClick={() => setTxForm({})}><Plus size={16} /> Nowa transakcja</button>
+                <button className="top-ic" style={{ width: 46, height: 46, borderRadius: 14 }} aria-label="Ustawienia" onClick={() => go("settings")}><SettingsIcon size={20} /></button>
+                <button className="user-chip" onClick={openProfile}>
+                  <span className="appbar-avatar" style={{ background: user?.avatarColor, width: 40, height: 40, fontSize: 15, borderRadius: 13 }}>{(user?.name || "?").charAt(0).toUpperCase()}</span>
+                  <span style={{ textAlign: "left", minWidth: 0 }}>
+                    <span style={{ display: "block", fontWeight: 800, fontSize: 13, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.name}</span>
+                    <span style={{ display: "block", fontWeight: 600, fontSize: 11, color: "var(--muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{user?.login}</span>
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+          {!isDesktop && (
+            <div className="appbar no-print">
+              <button className="top-ic" aria-label="Otwórz menu" onClick={() => setDrawer(true)}>
+                <Menu size={22} />
+              </button>
+              <button className={`top-ic ${view === "dashboard" ? "top-ic-on" : ""}`} aria-label="Pulpit" onClick={() => go("dashboard")}>
+                <Home size={20} />
+              </button>
+              {view === "settings" && settingsSub && !(settingsSub === "profile" && profileDirect) ? (
+                <div className="appbar-greet" style={{ display: "flex", alignItems: "center" }}>
+                  <button className="top-ic" aria-label="Wróć" onClick={() => { setSettingsSub(null); scrollTopAll(); }}>
+                    <ChevronLeft size={20} strokeWidth={2.4} />
+                  </button>
+                </div>
+              ) : (
+                <div className="appbar-greet" />
+              )}
+              <div className="appbar-month">{periodMonthLabel}</div>
+              <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                <button className="top-ic" aria-label="Ustawienia" onClick={() => go("settings")}>
+                  <SettingsIcon size={19} />
+                </button>
+                <button className="appbar-avatar" aria-label="Otwórz profil"
+                  style={{ background: user?.avatarColor, width: 44, height: 44, fontSize: 17, borderRadius: 14 }}
+                  onClick={openProfile}>
+                  {(user?.name || "?").charAt(0).toUpperCase()}
+                </button>
+              </div>
+            </div>
+          )}
           {content}
         </main>
       </div>
       </div>
 
+      {!isDesktop && <div className="statusbar-scrim no-print" aria-hidden="true" />}
+
       {!isDesktop && (
-        <nav className={`bottom-nav no-print ${navHidden ? "nav-hidden" : ""}`} ref={navRef}>
-          {mobileTabs.map((t) => {
-            if (t.id === "__add") return (
-              <button key="__add" onClick={() => setQuickAdd(true)} aria-label="Dodaj">
-                <span className="nav-plus"><Plus size={26} strokeWidth={2.6} /></span>
-              </button>
-            );
-            const m = NAV_META[t.id]; const I = m.icon;
-            return (
-              <button key={t.id} className={activeTab === t.id ? "on" : ""} onClick={() => go(t.id)}>
-                <I size={21} /> {m.label}
-              </button>
-            );
-          })}
-        </nav>
+        <>
+          <div className={`drawer-overlay no-print ${drawer ? "open" : ""}`} onClick={() => setDrawer(false)} />
+          <aside className={`drawer no-print ${drawer ? "open" : ""}`} aria-hidden={!drawer}>
+            <div className="drawer-head">
+              <div className="icon-badge" style={{ width: 44, height: 44, borderRadius: 14, background: "var(--grad-accent)", color: "var(--on-accent)", flexShrink: 0 }}><Wallet size={22} /></div>
+              <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em", fontFamily: "'Space Grotesk', sans-serif" }}>Sakwa</div>
+            </div>
+            <button className="btn btn-primary" style={{ margin: "0 14px 14px" }} onClick={() => { setDrawer(false); setTxForm({}); }}>
+              <Plus size={16} /> Nowa transakcja
+            </button>
+            <div className="drawer-list">
+              {normalizeNav(data.settings.navOrder).filter((id) => id !== "more").map((id) => {
+                const m = NAV_META[id];
+                if (!m) return null;
+                const I = m.icon;
+                return (
+                  <button key={id} className={`drawer-item ${view === id ? "on" : ""}`} onClick={() => { setDrawer(false); go(id); }}>
+                    <I size={19} /> {m.label}
+                  </button>
+                );
+              })}
+            </div>
+            <button className="drawer-foot" onClick={() => { setDrawer(false); openProfile(); }}>
+              <span className="appbar-avatar" style={{ background: user?.avatarColor, width: 42, height: 42, fontSize: 16, borderRadius: 13 }}>{(user?.name || "?").charAt(0).toUpperCase()}</span>
+              <span style={{ minWidth: 0, textAlign: "left" }}>
+                <span style={{ display: "block", fontWeight: 800, fontSize: 14.5, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.name}</span>
+                <span style={{ display: "block", fontSize: 11.5, color: "var(--muted)", fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{user?.login}</span>
+              </span>
+              <ChevronRight size={17} style={{ color: "var(--muted)", marginLeft: "auto", flexShrink: 0 }} />
+            </button>
+          </aside>
+          <button className="fab no-print" aria-label="Dodaj transakcję" onClick={() => setTxForm({})}>
+            <Plus size={24} strokeWidth={2.5} />
+          </button>
+        </>
       )}
 
       <Sheet open={quickAdd} onClose={() => setQuickAdd(false)} title="Co chcesz dodać?">
@@ -4261,11 +4764,11 @@ export default function App() {
           Kliknięto link resetujący — wpisz nowe hasło do konta. Min. 8 znaków, w tym mała i wielka litera oraz cyfra.
         </p>
         <Field label="Nowe hasło" error={rpErr}>
-          <input type="password" className={`input ${rpErr ? "err" : ""}`} autoComplete="new-password" value={rp1} autoFocus={AUTOF}
+          <PasswordInput error={rpErr} autoComplete="new-password" value={rp1} autoFocus={AUTOF}
             onChange={(e) => { setRp1(e.target.value); setRpErr(""); }} />
         </Field>
         <Field label="Powtórz hasło">
-          <input type="password" className="input" autoComplete="new-password" value={rp2}
+          <PasswordInput autoComplete="new-password" value={rp2}
             onChange={(e) => { setRp2(e.target.value); setRpErr(""); }}
             onKeyDown={(e) => e.key === "Enter" && document.getElementById("rp-save")?.click()} />
         </Field>
