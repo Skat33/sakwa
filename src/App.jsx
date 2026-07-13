@@ -4292,16 +4292,10 @@ export default function App() {
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
     const t = THEMES.find((x) => x.id === id) || THEMES[0];
-    let metas = document.querySelectorAll('meta[name="theme-color"]');
-    if (!metas.length) {
-      const m = document.createElement("meta");
-      m.setAttribute("name", "theme-color");
-      document.head.appendChild(m);
-      metas = document.querySelectorAll('meta[name="theme-color"]');
-    }
-    /* nadpisujemy KAŻDY theme-color (także ten z index.html i warianty z media),
-       inaczej Safari bierze pierwszy z brzegu i notch zostaje czarny */
-    metas.forEach((m) => { m.removeAttribute("media"); m.setAttribute("content", t.bg); });
+    /* Jak panektest.lol: BEZ meta theme-color — Safari sam próbkuje tło strony
+       (ustawiane niżej), dzięki czemu dolny pasek Safari nie ma jasnej poświaty.
+       Usuwamy też ewentualny wcześniej wstrzyknięty theme-color. */
+    document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
     document.documentElement.style.colorScheme = t.scheme;
     document.documentElement.style.background = t.bg;
     document.body.style.background = t.bg;
