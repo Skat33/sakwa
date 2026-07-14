@@ -57,7 +57,7 @@ const AVATAR_COLORS = ["#34E0A1","#8B7CFF","#4D9FFF","#FF7AC3","#FFB020","#FF6E6
 const THEMES = [
   { id: "dark",   label: "Fiolet",   scheme: "dark",  bg: "#09090F", surface: "#121219", surface2: "#191923", surface3: "#232330", text: "#F1F0F6", muted: "#8E8CA0", line: "rgba(255,255,255,0.07)", accent: "#8B5CF6", neg: "#F87171", warn: "#FBBF24", violet: "#C084FC", info: "#60A5FA", shadow: "0 16px 44px rgba(0,0,0,0.5)", onAccent: "#FFFFFF" },
   { id: "ocean",  label: "Nexify",   scheme: "dark",  bg: "#060B1A", surface: "#0B1226", surface2: "#111A33", surface3: "#182342", text: "#EDF2FB", muted: "#8593B4", line: "rgba(120,160,255,0.12)", accent: "#3B82F6", neg: "#F87171", warn: "#FBBF24", violet: "#8B5CF6", info: "#38BDF8", shadow: "0 16px 44px rgba(0,0,10,0.55)", onAccent: "#FFFFFF" },
-  { id: "light",  label: "Dzień",    scheme: "light", bg: "#EFEEF6", surface: "#FFFFFF", surface2: "#F4F3FA", surface3: "#E9E7F4", text: "#161328", muted: "#6F6C86", line: "rgba(40,30,90,0.09)", accent: "#7C3AED", neg: "#DC5050", warn: "#B8860B", violet: "#9F67F8", info: "#2F7FE0", shadow: "0 14px 36px rgba(60,40,120,0.10)", onAccent: "#FFFFFF" },
+  { id: "light",  label: "Dzień",    scheme: "light", bg: "#F5F5F7", surface: "#FFFFFF", surface2: "#F4F3FA", surface3: "#E9E7F4", text: "#161328", muted: "#6F6C86", line: "rgba(40,30,90,0.09)", accent: "#7C3AED", neg: "#DC5050", warn: "#B8860B", violet: "#9F67F8", info: "#2F7FE0", shadow: "0 14px 36px rgba(60,40,120,0.10)", onAccent: "#FFFFFF" },
   { id: "violet", label: "Magenta",  scheme: "dark",  bg: "#0E0812", surface: "#181020", surface2: "#22162D", surface3: "#2D1D3B", text: "#F6EFF8", muted: "#A08BA8", line: "rgba(255,255,255,0.08)", accent: "#D946EF", neg: "#FB7185", warn: "#FBBF24", violet: "#E879F9", info: "#818CF8", shadow: "0 16px 44px rgba(0,0,0,0.55)", onAccent: "#FFFFFF" },
   { id: "forest", label: "Szmaragd", scheme: "dark",  bg: "#07100C", surface: "#0E1A14", surface2: "#14251C", surface3: "#1C3226", text: "#ECF5EF", muted: "#87A492", line: "rgba(255,255,255,0.06)", accent: "#34D399", neg: "#F87171", warn: "#FBBF24", violet: "#818CF8", info: "#38BDF8", shadow: "0 16px 44px rgba(0,0,0,0.5)", onAccent: "#04281C" },
 ];
@@ -279,7 +279,7 @@ button, .btn, .cat-tile, .tx-row, .nav-item, .seg button, input, select, textare
 .seg::-webkit-scrollbar { display: none; }
 .fin-root {
   font-family: 'Manrope', system-ui, sans-serif;
-  min-height: 100vh; min-height: 100dvh; width: 100%; overflow-x: clip;
+  min-height: 100vh; min-height: 100dvh; width: 100%;
   background: var(--bg); color: var(--text);
   transition: background .3s ease, color .3s ease;
   font-size: 15px;
@@ -376,7 +376,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 @media (max-width: 1023px) {
   /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim */
   html, body { height: auto; min-height: 100%; overflow-x: clip; overflow-y: visible; overscroll-behavior-y: contain; }
-  .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; overflow-x: clip; }
+  .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; }
   .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
   .app-scroll::-webkit-scrollbar { display: none; }
 }
@@ -475,7 +475,7 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padd
 .big-num { font-size: clamp(34px, 8vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
 .divider { height: 1px; background: var(--line); margin: 4px 0; }
 .to-top {
-  position: fixed; left: 16px; right: auto; bottom: calc(28px + max(env(safe-area-inset-bottom), 12px)); z-index: 45;
+  position: fixed; left: 16px; right: auto; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 45;
 }
 @media (min-width: 1024px) {
   .to-top { left: auto; right: 24px; bottom: 26px; }
@@ -709,7 +709,7 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   width: 16px; height: 3px; border-radius: 3px; background: var(--grad-accent);
 }
 .fab {
-  position: fixed; right: 18px; bottom: calc(26px + max(env(safe-area-inset-bottom), 12px)); z-index: 40;
+  position: fixed; right: 18px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 40;
   width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   background: var(--grad-accent); color: var(--on-accent);
@@ -1558,13 +1558,9 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onAdd, onEditT
 
 function History({ data, helpers, onEditTx, onDeleteTx }) {
   const { toMain, main } = helpers;
-  const isMobileH = useMedia("(max-width: 767px)");
-  const baseLimit = isMobileH ? 12 : 25;
   const [q, setQ] = useState("");
   const [type, setType] = useState("all");
   const [sort, setSort] = useState("date-desc");
-  const [limit, setLimit] = useState(baseLimit);
-  useEffect(() => { setLimit(baseLimit); }, [q, type, sort, baseLimit]);
   const filtered = useMemo(() => {
     let arr = data.transactions;
     if (type !== "all") arr = arr.filter((t) => t.type === type);
@@ -1597,19 +1593,6 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
     return g;
   }, [filtered, sort]);
 
-  const limitedGroups = useMemo(() => {
-    let left = limit;
-    const out = [];
-    for (const g of groups) {
-      if (left <= 0) break;
-      const items = g.items.slice(0, left);
-      left -= items.length;
-      out.push({ key: g.key, items });
-    }
-    return out;
-  }, [groups, limit]);
-  const remaining = filtered.length - Math.min(limit, filtered.length);
-
   return (
     <div className="fade-in">
       <div className="sticky-head">
@@ -1640,7 +1623,7 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
       {filtered.length === 0 ? (
         <EmptyState icon={Search} title="Nic tu nie ma" desc={q ? `Brak transakcji pasujących do „${q}".` : "Brak transakcji spełniających filtry."} />
       ) : (
-        limitedGroups.map((g) => (
+        groups.map((g) => (
           <div key={g.key || "all"} style={{ marginBottom: 6 }}>
             {g.key && <div style={{ fontSize: 12, fontWeight: 800, color: "var(--muted)", padding: "12px 4px 6px", textTransform: "uppercase", letterSpacing: ".04em" }}>{fmtDate(g.key)}</div>}
             <div className="card tx-list" style={{ padding: 6, display: "flex", flexDirection: "column" }}>
@@ -1651,21 +1634,6 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
             </div>
           </div>
         ))
-      )}
-      {remaining > 0 && (
-        <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
-          <button className="btn btn-ghost" style={{ flex: 2 }} onClick={() => setLimit((l) => l + 20)}>
-            Pokaż więcej (pozostało {remaining})
-          </button>
-          <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => setLimit(filtered.length)}>
-            Wszystkie
-          </button>
-        </div>
-      )}
-      {remaining === 0 && filtered.length > baseLimit && (
-        <button className="btn btn-ghost" style={{ width: "100%", marginTop: 12 }} onClick={() => { setLimit(baseLimit); scrollTopAll(true); }}>
-          Zwiń listę
-        </button>
       )}
     </div>
   );
