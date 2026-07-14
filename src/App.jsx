@@ -57,7 +57,7 @@ const AVATAR_COLORS = ["#34E0A1","#8B7CFF","#4D9FFF","#FF7AC3","#FFB020","#FF6E6
 const THEMES = [
   { id: "dark",   label: "Fiolet",   scheme: "dark",  bg: "#09090F", surface: "#121219", surface2: "#191923", surface3: "#232330", text: "#F1F0F6", muted: "#8E8CA0", line: "rgba(255,255,255,0.07)", accent: "#8B5CF6", neg: "#F87171", warn: "#FBBF24", violet: "#C084FC", info: "#60A5FA", shadow: "0 16px 44px rgba(0,0,0,0.5)", onAccent: "#FFFFFF" },
   { id: "ocean",  label: "Nexify",   scheme: "dark",  bg: "#060B1A", surface: "#0B1226", surface2: "#111A33", surface3: "#182342", text: "#EDF2FB", muted: "#8593B4", line: "rgba(120,160,255,0.12)", accent: "#3B82F6", neg: "#F87171", warn: "#FBBF24", violet: "#8B5CF6", info: "#38BDF8", shadow: "0 16px 44px rgba(0,0,10,0.55)", onAccent: "#FFFFFF" },
-  { id: "light",  label: "Dzień",    scheme: "light", bg: "#F5F5F7", surface: "#FFFFFF", surface2: "#F4F3FA", surface3: "#E9E7F4", text: "#161328", muted: "#6F6C86", line: "rgba(40,30,90,0.09)", accent: "#7C3AED", neg: "#DC5050", warn: "#B8860B", violet: "#9F67F8", info: "#2F7FE0", shadow: "0 14px 36px rgba(60,40,120,0.10)", onAccent: "#FFFFFF" },
+  { id: "light",  label: "Dzień",    scheme: "light", bg: "#FFFFFF", surface: "#FFFFFF", surface2: "#F4F3FA", surface3: "#E9E7F4", text: "#161328", muted: "#6F6C86", line: "rgba(40,30,90,0.09)", accent: "#7C3AED", neg: "#DC5050", warn: "#B8860B", violet: "#9F67F8", info: "#2F7FE0", shadow: "0 14px 36px rgba(60,40,120,0.10)", onAccent: "#FFFFFF" },
   { id: "violet", label: "Magenta",  scheme: "dark",  bg: "#0E0812", surface: "#181020", surface2: "#22162D", surface3: "#2D1D3B", text: "#F6EFF8", muted: "#A08BA8", line: "rgba(255,255,255,0.08)", accent: "#D946EF", neg: "#FB7185", warn: "#FBBF24", violet: "#E879F9", info: "#818CF8", shadow: "0 16px 44px rgba(0,0,0,0.55)", onAccent: "#FFFFFF" },
   { id: "forest", label: "Szmaragd", scheme: "dark",  bg: "#07100C", surface: "#0E1A14", surface2: "#14251C", surface3: "#1C3226", text: "#ECF5EF", muted: "#87A492", line: "rgba(255,255,255,0.06)", accent: "#34D399", neg: "#F87171", warn: "#FBBF24", violet: "#818CF8", info: "#38BDF8", shadow: "0 16px 44px rgba(0,0,0,0.5)", onAccent: "#04281C" },
 ];
@@ -374,9 +374,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 @media (min-width: 1024px) { .toast { bottom: 28px; } }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
-  /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim */
-  /* clip TYLKO na html (root/scroller) — overflow na body łamie position:sticky na iOS */
-  html { overflow-x: clip; }
+  /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim.
+     ŻADNEGO overflow na html/body — na iOS łamie to position:sticky (nagłówek Historii).
+     Poziomy nadmiar chronią max-width/box-sizing komponentów. */
   html, body { height: auto; min-height: 100%; overflow-y: visible; overscroll-behavior-y: contain; }
   .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; }
   .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
