@@ -375,9 +375,8 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
   /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim.
-     ŻADNEGO overflow na html/body — na iOS łamie to position:sticky (nagłówek Historii).
-     Poziomy nadmiar chronią max-width/box-sizing komponentów. */
-  html, body { height: auto; min-height: 100%; overflow-y: visible; overscroll-behavior-y: contain; }
+     overflow-x: clip chroni przed poziomym scrollem i jest neutralny dla position:sticky. */
+  html, body { height: auto; min-height: 100%; overflow-x: clip; overflow-y: visible; overscroll-behavior-y: contain; }
   .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; }
   .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
   .app-scroll::-webkit-scrollbar { display: none; }
@@ -4236,12 +4235,12 @@ export default function App() {
       if (!isField(document.activeElement) && vvOff > 0) reset();
     }, 80);
     window.addEventListener("focusout", onFocusOut);
-    const vv = window.visualViewport;
-    const onVV = () => { if (vv && vv.offsetTop > 0 && !isField(document.activeElement)) reset(); };
-    if (vv) vv.addEventListener("resize", onVV);
+    /* UWAGA: NIE resetujemy scrolla na visualViewport "resize" — ten event odpala się
+       na iOS przy każdym zwijaniu paska adresu i przy overscrollu, przez co strona
+       "wracała do góry", nagłówek Historii wyglądał jakby nie trzymał (sticky),
+       a dół tracił przezroczystość. Zamknięcie klawiatury łapie już focusout. */
     return () => {
       window.removeEventListener("focusout", onFocusOut);
-      if (vv) vv.removeEventListener("resize", onVV);
     };
   }, []);
 
