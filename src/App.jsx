@@ -764,16 +764,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 .pass-eye:active { color: var(--accent); }
 
 .appbar, .topbar { position: relative; }
-@media (max-width: 1023px) {
-  /* przyklejony górny pasek (jak header Revolut) — menu zawsze dostępne, można
-     otworzyć szufladę będąc przewiniętym, więc pasek przeglądarki zostaje zwinięty */
-  .appbar {
-    position: sticky; top: 0; z-index: 30;
-    background: var(--bg);
-    margin-left: -16px; margin-right: -16px;
-    padding: 2px 16px 14px;
-  }
-}
 .appbar-month {
   position: absolute; left: 50%; top: 21px; transform: translate(-50%, -50%); text-align: center;
   font-size: 14.5px; font-weight: 800; color: var(--text); white-space: nowrap;
@@ -4488,9 +4478,7 @@ export default function App() {
     });
     setProfileDirect(false);
     setSettingsSub(null);
-    /* mobile: NIE resetujemy scrolla przy zmianie podstrony — dzięki temu pasek
-       adresu przeglądarki zostaje zwinięty (przezroczysty dół). Desktop bez zmian. */
-    if (isDesktop) scrollTopAll();
+    scrollTopAll();
   };
   const periodMonthLabel = useMemo(() => {
     if (!data) return "";
@@ -4503,11 +4491,11 @@ export default function App() {
     if (prev) {
       setView(prev);
       setSettingsSub(null);
-      if (isDesktop) scrollTopAll();
+      scrollTopAll();
     } else {
       setView("dashboard");
       setSettingsSub(null);
-      if (isDesktop) scrollTopAll();
+      scrollTopAll();
     }
   };
   const [drawer, setDrawer] = useState(false);
@@ -4521,7 +4509,7 @@ export default function App() {
       return "settings";
     });
     setSettingsSub("profile");
-    if (isDesktop) scrollTopAll();
+    scrollTopAll();
   };
 
   /* keyboard shortcut Ctrl+K → new transaction */
@@ -4661,7 +4649,7 @@ export default function App() {
               </button>
               {view === "settings" && settingsSub && !(settingsSub === "profile" && profileDirect) ? (
                 <div className="appbar-greet" style={{ display: "flex", alignItems: "center" }}>
-                  <button className="top-ic" aria-label="Wróć" onClick={() => { setSettingsSub(null); if (isDesktop) scrollTopAll(); }}>
+                  <button className="top-ic" aria-label="Wróć" onClick={() => { setSettingsSub(null); scrollTopAll(); }}>
                     <ChevronLeft size={20} strokeWidth={2.4} />
                   </button>
                 </div>
