@@ -4503,11 +4503,11 @@ export default function App() {
     if (prev) {
       setView(prev);
       setSettingsSub(null);
-      scrollTopAll();
+      if (isDesktop) scrollTopAll();
     } else {
       setView("dashboard");
       setSettingsSub(null);
-      scrollTopAll();
+      if (isDesktop) scrollTopAll();
     }
   };
   const [drawer, setDrawer] = useState(false);
@@ -4521,7 +4521,7 @@ export default function App() {
       return "settings";
     });
     setSettingsSub("profile");
-    scrollTopAll();
+    if (isDesktop) scrollTopAll();
   };
 
   /* keyboard shortcut Ctrl+K → new transaction */
@@ -4661,7 +4661,7 @@ export default function App() {
               </button>
               {view === "settings" && settingsSub && !(settingsSub === "profile" && profileDirect) ? (
                 <div className="appbar-greet" style={{ display: "flex", alignItems: "center" }}>
-                  <button className="top-ic" aria-label="Wróć" onClick={() => { setSettingsSub(null); scrollTopAll(); }}>
+                  <button className="top-ic" aria-label="Wróć" onClick={() => { setSettingsSub(null); if (isDesktop) scrollTopAll(); }}>
                     <ChevronLeft size={20} strokeWidth={2.4} />
                   </button>
                 </div>
