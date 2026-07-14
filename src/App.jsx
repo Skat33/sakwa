@@ -458,13 +458,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   position: absolute; right: 0; top: 0; bottom: 0; width: 76px; display: flex; align-items: center;
   justify-content: center; color: var(--neg); border-radius: 0 15px 15px 0;
 }
-.sticky-head {
-  position: sticky; top: 0; z-index: 20; background: color-mix(in srgb, var(--bg) 92%, transparent);
-  backdrop-filter: blur(12px); padding-bottom: 10px;
-}
-@media (max-width: 1023px) {
-  .sticky-head { top: 0; padding-top: 10px; margin-top: 0; }
-}
+/* zwykły nagłówek Historii — scrolluje się razem ze stroną jak na innych podstronach
+   (BEZ position: sticky) */
+.hist-head { padding-bottom: 6px; }
 h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padding-left: 4px; }
 @media (max-width: 1023px) { h1.page-title { padding-left: 10px; } }
 .auth-wrap { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: calc(max(env(safe-area-inset-top), 34px) + 16px) 20px calc(max(env(safe-area-inset-bottom), 16px) + 16px); }
@@ -768,6 +764,16 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 .pass-eye:active { color: var(--accent); }
 
 .appbar, .topbar { position: relative; }
+@media (max-width: 1023px) {
+  /* przyklejony górny pasek (jak header Revolut) — menu zawsze dostępne, można
+     otworzyć szufladę będąc przewiniętym, więc pasek przeglądarki zostaje zwinięty */
+  .appbar {
+    position: sticky; top: 0; z-index: 30;
+    background: var(--bg);
+    margin-left: -16px; margin-right: -16px;
+    padding: 2px 16px 14px;
+  }
+}
 .appbar-month {
   position: absolute; left: 50%; top: 21px; transform: translate(-50%, -50%); text-align: center;
   font-size: 14.5px; font-weight: 800; color: var(--text); white-space: nowrap;
@@ -1596,7 +1602,7 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
 
   return (
     <div className="fade-in">
-      <div className="sticky-head">
+      <div className="hist-head">
         <h1 className="page-title" style={{ marginBottom: 14 }}>Historia</h1>
         <div style={{ position: "relative", marginBottom: 10 }}>
           <Search size={16} style={{ position: "absolute", left: 13, top: "50%", transform: "translateY(-50%)", color: "var(--muted)" }} />
@@ -4482,7 +4488,9 @@ export default function App() {
     });
     setProfileDirect(false);
     setSettingsSub(null);
-    scrollTopAll();
+    /* mobile: NIE resetujemy scrolla przy zmianie podstrony — dzięki temu pasek
+       adresu przeglądarki zostaje zwinięty (przezroczysty dół). Desktop bez zmian. */
+    if (isDesktop) scrollTopAll();
   };
   const periodMonthLabel = useMemo(() => {
     if (!data) return "";
