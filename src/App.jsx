@@ -375,7 +375,9 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
   /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim */
-  html, body { height: auto; min-height: 100%; overflow-x: clip; overflow-y: visible; overscroll-behavior-y: contain; }
+  /* clip TYLKO na html (root/scroller) — overflow na body łamie position:sticky na iOS */
+  html { overflow-x: clip; }
+  html, body { height: auto; min-height: 100%; overflow-y: visible; overscroll-behavior-y: contain; }
   .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; }
   .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
   .app-scroll::-webkit-scrollbar { display: none; }
@@ -726,12 +728,12 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 .drawer {
   position: fixed; top: 0; bottom: 0; left: 0; z-index: 1090;
   width: min(304px, 82vw); background: color-mix(in srgb, var(--surface) 68%, var(--bg)); border-right: 1px solid var(--line);
-  transform: translateX(-104%); transition: transform .3s cubic-bezier(.22,.9,.3,1);
+  transform: translateX(-104%); transition: transform .3s cubic-bezier(.22,.9,.3,1), box-shadow .3s ease;
   display: flex; flex-direction: column;
   padding: calc(max(env(safe-area-inset-top), 34px) + 8px) 0 calc(max(env(safe-area-inset-bottom), 12px) + 8px);
-  box-shadow: 24px 0 60px rgba(0,0,0,0.45);
+  /* cień TYLKO gdy otwarta — inaczej rozmycie wystaje zza lewej krawędzi ekranu */
 }
-.drawer.open { transform: translateX(0); }
+.drawer.open { transform: translateX(0); box-shadow: 24px 0 60px rgba(0,0,0,0.45); }
 .drawer-head { display: flex; align-items: center; gap: 12px; padding: 6px 16px 16px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
 .drawer-foot {
   display: flex; align-items: center; gap: 12px; margin: 10px 12px 0; padding: 12px;
