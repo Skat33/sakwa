@@ -279,7 +279,7 @@ button, .btn, .cat-tile, .tx-row, .nav-item, .seg button, input, select, textare
 .seg::-webkit-scrollbar { display: none; }
 .fin-root {
   font-family: 'Manrope', system-ui, sans-serif;
-  min-height: 100vh; min-height: 100dvh; width: 100%;
+  min-height: 100vh; min-height: 100dvh; width: 100%; overflow-x: clip;
   background: var(--bg); color: var(--text);
   transition: background .3s ease, color .3s ease;
   font-size: 15px;
@@ -377,7 +377,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim.
      overflow-x: clip chroni przed poziomym scrollem i jest neutralny dla position:sticky. */
   html, body { height: auto; min-height: 100%; overflow-x: clip; overflow-y: visible; overscroll-behavior-y: contain; }
-  .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; }
+  .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; overflow-x: clip; }
   .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
   .app-scroll::-webkit-scrollbar { display: none; }
 }
