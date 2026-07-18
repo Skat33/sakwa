@@ -821,6 +821,18 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 1.5px 0 rgba(255,255,255,0.35),
               0 0 0 6px color-mix(in srgb, var(--bg) 85%, transparent);
 }
+
+/* iOS 26 Safari dolny pasek: shim, który Safari próbkuje zamiast nav/body.
+   Najwyższy z-index + krawędź dołu => steruje kolorem/szkłem paska. Tło ustawia
+   theme effect (color-mix z t.surface). Tylko mobile; nieklikalny. */
+#safari-glass-shim { display: none; }
+@media (max-width: 1023px) {
+  #safari-glass-shim {
+    display: block; position: fixed; left: 0; right: 0; bottom: 0;
+    height: 8px; z-index: 2147483647; pointer-events: none;
+    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  }
+}
 `;
 
 /* ---------------- shared components ---------------- */
@@ -4247,9 +4259,10 @@ export default function App() {
     };
   }, []);
 
-  /* iOS: NIE używamy viewport-fit=cover — dzięki temu treść nie wchodzi pod
-     paski Safari, a Safari maluje górę/dół kolorem motywu (theme-color).
-     To eliminuje szary pasek u góry i białą poświatę na dole (jak panektest.lol). */
+  /* iOS 26: WŁĄCZAMY viewport-fit=cover, żeby treść i tło sięgały pod pływający
+     dolny pasek Safari. Ten pasek („liquid glass") próbkuje tło NAJWYŻEJ położonego
+     elementu fixed przy krawędzi — sterujemy tym przez #safari-glass-shim (niżej),
+     dzięki czemu pasek jest spójnie szklisty zamiast skakać na biało przy zmianie kart. */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
@@ -4257,9 +4270,9 @@ export default function App() {
       meta.setAttribute("name", "viewport");
       document.head.appendChild(meta);
     }
-    const content = (meta.getAttribute("content") || "width=device-width, initial-scale=1")
+    const base = (meta.getAttribute("content") || "width=device-width, initial-scale=1")
       .replace(/,?\s*viewport-fit\s*=\s*cover/gi, "");
-    meta.setAttribute("content", content);
+    meta.setAttribute("content", base + ", viewport-fit=cover");
   }, []);
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
@@ -4278,6 +4291,18 @@ export default function App() {
     document.documentElement.style.colorScheme = t.scheme;
     document.documentElement.style.background = t.bg;
     document.body.style.background = t.bg;
+    /* Safari 26 „liquid glass" dolny pasek próbkuje tło najwyżej położonego elementu
+       fixed przy dolnej krawędzi. Trzymamy własny, najwyższy shim i nadajemy mu
+       szkliste tło motywu → pasek zostaje półprzezroczysty i spójny (CSS: #safari-glass-shim).
+       Regulacja: % w color-mix (mniej = bardziej przezroczysty pasek). */
+    let shim = document.getElementById("safari-glass-shim");
+    if (!shim) {
+      shim = document.createElement("div");
+      shim.id = "safari-glass-shim";
+      shim.setAttribute("aria-hidden", "true");
+      document.body.appendChild(shim);
+    }
+    shim.style.background = `color-mix(in srgb, ${t.surface} 50%, transparent)`;
   }, [phase, data?.settings?.theme, authTheme]);
 
   /* boot: restore session + react to auth events (also fired cross-tab,
