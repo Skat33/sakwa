@@ -380,7 +380,10 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; overflow-x: clip; }
   .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
   .app-scroll::-webkit-scrollbar { display: none; }
-}
+  /* iOS Safari auto-zoomuje pole tekstowe z font-size < 16px przy focusie =>
+     po odpaleniu klawiatury strona skacze i przesuwa się w bok (w lewo).
+     16px na polach wejściowych wyłącza ten zoom (patrz też .pin-hidden). */
+  .input, .select, input, textarea, select { font-size: 16px; }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
 .bottom-nav {
   position: fixed; bottom: var(--vv-off, 0px); left: 0; right: 0; z-index: 40;
