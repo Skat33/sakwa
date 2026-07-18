@@ -822,15 +822,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
               0 0 0 6px color-mix(in srgb, var(--bg) 85%, transparent);
 }
 
-/* iOS 26 Safari: pełnoekranowa, prawie przezroczysta nakładka (jak panektest.lol).
-   Safari próbkuje ją dla górnego/dolnego paska → paski są szkliste/przezroczyste,
-   nie białe. Nieklikalna. Tylko mobile (na desktopie brak pasków Safari). */
-#ios-glass-veil {
-  position: fixed; inset: 0; z-index: 9998; pointer-events: none;
-  background: rgba(0,0,0,0.08);
-  -webkit-backdrop-filter: blur(1px); backdrop-filter: blur(1px);
-}
-@media (min-width: 1024px) { #ios-glass-veil { display: none; } }
 `;
 
 /* ---------------- shared components ---------------- */
@@ -4272,17 +4263,6 @@ export default function App() {
       .replace(/,?\s*viewport-fit\s*=\s*cover/gi, "");
     meta.setAttribute("content", content);
   }, []);
-  /* Nakładka jak na panektest.lol: fixed inset:0, prawie przezroczysta (8% czerni)
-     + blur(1px), najwyższy z-index. iOS 26 Safari próbkuje ją dla pasków → są
-     szkliste zamiast białych. pointer-events:none => nie blokuje klików. Mobile-only (CSS). */
-  useEffect(() => {
-    if (document.getElementById("ios-glass-veil")) return;
-    const veil = document.createElement("div");
-    veil.id = "ios-glass-veil";
-    veil.setAttribute("aria-hidden", "true");
-    document.body.appendChild(veil);
-    return () => veil.remove();
-  }, []);
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
     const t = THEMES.find((x) => x.id === id) || THEMES[0];
@@ -4293,6 +4273,7 @@ export default function App() {
        Czyścimy też ewentualny shim z wcześniejszej wersji bundla. */
     document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
     document.getElementById("safari-glass-shim")?.remove();
+    document.getElementById("ios-glass-veil")?.remove();
     document.documentElement.style.colorScheme = t.scheme;
     document.documentElement.style.background = t.bg;
     document.body.style.background = t.bg;
