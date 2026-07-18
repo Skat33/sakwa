@@ -822,6 +822,15 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
               0 0 0 6px color-mix(in srgb, var(--bg) 85%, transparent);
 }
 
+/* iOS 26 Safari: pełnoekranowa, prawie przezroczysta nakładka (jak panektest.lol).
+   Safari próbkuje ją dla górnego/dolnego paska → paski są szkliste/przezroczyste,
+   nie białe. Nieklikalna. Tylko mobile (na desktopie brak pasków Safari). */
+#ios-glass-veil {
+  position: fixed; inset: 0; z-index: 9998; pointer-events: none;
+  background: rgba(0,0,0,0.08);
+  -webkit-backdrop-filter: blur(1px); backdrop-filter: blur(1px);
+}
+@media (min-width: 1024px) { #ios-glass-veil { display: none; } }
 `;
 
 /* ---------------- shared components ---------------- */
@@ -4248,10 +4257,10 @@ export default function App() {
     };
   }, []);
 
-  /* iOS 26: WŁĄCZAMY viewport-fit=cover, żeby treść i tło sięgały pod pływający
-     dolny pasek Safari. Ten pasek („liquid glass") próbkuje tło NAJWYŻEJ położonego
-     elementu fixed przy krawędzi — sterujemy tym przez #safari-glass-shim (niżej),
-     dzięki czemu pasek jest spójnie szklisty zamiast skakać na biało przy zmianie kart. */
+  /* Jak panektest.lol: viewport BEZ viewport-fit=cover. Dolny pływający pasek
+     iOS 26 próbkuje najwyżej położony element fixed przy krawędzi — dajemy mu
+     pełnoekranową, prawie przezroczystą nakładkę #ios-glass-veil (niżej),
+     dzięki czemu pasek jest szklisty/przezroczysty i spójny, a nie biały. */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
@@ -4259,9 +4268,20 @@ export default function App() {
       meta.setAttribute("name", "viewport");
       document.head.appendChild(meta);
     }
-    const base = (meta.getAttribute("content") || "width=device-width, initial-scale=1")
+    const content = (meta.getAttribute("content") || "width=device-width, initial-scale=1")
       .replace(/,?\s*viewport-fit\s*=\s*cover/gi, "");
-    meta.setAttribute("content", base + ", viewport-fit=cover");
+    meta.setAttribute("content", content);
+  }, []);
+  /* Nakładka jak na panektest.lol: fixed inset:0, prawie przezroczysta (8% czerni)
+     + blur(1px), najwyższy z-index. iOS 26 Safari próbkuje ją dla pasków → są
+     szkliste zamiast białych. pointer-events:none => nie blokuje klików. Mobile-only (CSS). */
+  useEffect(() => {
+    if (document.getElementById("ios-glass-veil")) return;
+    const veil = document.createElement("div");
+    veil.id = "ios-glass-veil";
+    veil.setAttribute("aria-hidden", "true");
+    document.body.appendChild(veil);
+    return () => veil.remove();
   }, []);
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
