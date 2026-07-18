@@ -466,7 +466,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .hist-head { padding-bottom: 6px; }
 h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padding-left: 4px; }
 @media (max-width: 1023px) { h1.page-title { padding-left: 10px; } }
-.auth-wrap { min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center; padding: calc(max(env(safe-area-inset-top), 34px) + 16px) 20px calc(max(env(safe-area-inset-bottom), 16px) + 16px); }
+/* Centrowanie przez auto-marginesy zamiast align/justify-center: gdy klawiatura
+   otworzy się i karta jest wyższa niż widoczny obszar, nie ucina góry ani nie
+   „przeskakuje" — po prostu wyrównuje do góry i pozwala przewinąć. */
+.auth-wrap { min-height: 100vh; min-height: 100dvh; display: flex; padding: calc(max(env(safe-area-inset-top), 34px) + 16px) 20px calc(max(env(safe-area-inset-bottom), 16px) + 16px); }
+.auth-wrap > * { margin: auto; }
 .hero-balance {
   position: relative; overflow: hidden; padding: 26px 24px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 24px; box-shadow: var(--shadow);
