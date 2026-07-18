@@ -4264,10 +4264,17 @@ export default function App() {
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
     const t = THEMES.find((x) => x.id === id) || THEMES[0];
-    /* Jak panektest.lol: BEZ meta theme-color — Safari sam próbkuje tło strony
-       (ustawiane niżej), dzięki czemu dolny pasek Safari nie ma jasnej poświaty.
-       Usuwamy też ewentualny wcześniej wstrzyknięty theme-color. */
+    /* theme-color = tło aktywnego motywu (jak revolut.com: theme-color #fff).
+       Bez tego Safari sam PRÓBKUJE tło i przy przełączaniu kart maluje dolny pasek
+       na biało (gubi „przezroczystość"). Deterministyczny theme-color = ten sam kolor
+       co strona → pasek wraca spójny, jak na normalnych stronach. Glow i tak zabija
+       near-white bg (nie brak theme-color), więc można go tu bezpiecznie ustawić.
+       Trzymamy dokładnie JEDEN meta theme-color sterowany stąd. */
     document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
+    const tcMeta = document.createElement("meta");
+    tcMeta.setAttribute("name", "theme-color");
+    tcMeta.setAttribute("content", t.bg);
+    document.head.appendChild(tcMeta);
     document.documentElement.style.colorScheme = t.scheme;
     document.documentElement.style.background = t.bg;
     document.body.style.background = t.bg;
