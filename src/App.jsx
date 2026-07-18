@@ -822,17 +822,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
               0 0 0 6px color-mix(in srgb, var(--bg) 85%, transparent);
 }
 
-/* iOS 26 Safari dolny pasek: shim, który Safari próbkuje zamiast nav/body.
-   Najwyższy z-index + krawędź dołu => steruje kolorem/szkłem paska. Tło ustawia
-   theme effect (color-mix z t.surface). Tylko mobile; nieklikalny. */
-#safari-glass-shim { display: none; }
-@media (max-width: 1023px) {
-  #safari-glass-shim {
-    display: block; position: fixed; left: 0; right: 0; bottom: 0;
-    height: 8px; z-index: 2147483647; pointer-events: none;
-    -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
-  }
-}
 `;
 
 /* ---------------- shared components ---------------- */
@@ -4277,32 +4266,16 @@ export default function App() {
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
     const t = THEMES.find((x) => x.id === id) || THEMES[0];
-    /* theme-color = tło aktywnego motywu (jak revolut.com: theme-color #fff).
-       Bez tego Safari sam PRÓBKUJE tło i przy przełączaniu kart maluje dolny pasek
-       na biało (gubi „przezroczystość"). Deterministyczny theme-color = ten sam kolor
-       co strona → pasek wraca spójny, jak na normalnych stronach. Glow i tak zabija
-       near-white bg (nie brak theme-color), więc można go tu bezpiecznie ustawić.
-       Trzymamy dokładnie JEDEN meta theme-color sterowany stąd. */
+    /* BEZ meta theme-color i BEZ kolorowego shim-a przy dole: oba MALUJĄ dolny
+       pływający pasek iOS 26 solidnym kolorem (stąd „ciągle biały pasek"). Chcemy,
+       żeby pasek był przezroczysty i nakładał się na treść — to zapewnia
+       viewport-fit=cover (wyżej), dzięki któremu tło/treść sięgają pod pasek.
+       Czyścimy też ewentualny shim z wcześniejszej wersji bundla. */
     document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
-    const tcMeta = document.createElement("meta");
-    tcMeta.setAttribute("name", "theme-color");
-    tcMeta.setAttribute("content", t.bg);
-    document.head.appendChild(tcMeta);
+    document.getElementById("safari-glass-shim")?.remove();
     document.documentElement.style.colorScheme = t.scheme;
     document.documentElement.style.background = t.bg;
     document.body.style.background = t.bg;
-    /* Safari 26 „liquid glass" dolny pasek próbkuje tło najwyżej położonego elementu
-       fixed przy dolnej krawędzi. Trzymamy własny, najwyższy shim i nadajemy mu
-       szkliste tło motywu → pasek zostaje półprzezroczysty i spójny (CSS: #safari-glass-shim).
-       Regulacja: % w color-mix (mniej = bardziej przezroczysty pasek). */
-    let shim = document.getElementById("safari-glass-shim");
-    if (!shim) {
-      shim = document.createElement("div");
-      shim.id = "safari-glass-shim";
-      shim.setAttribute("aria-hidden", "true");
-      document.body.appendChild(shim);
-    }
-    shim.style.background = `color-mix(in srgb, ${t.surface} 50%, transparent)`;
   }, [phase, data?.settings?.theme, authTheme]);
 
   /* boot: restore session + react to auth events (also fired cross-tab,
