@@ -721,12 +721,18 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   transition: transform .15s ease;
 }
 .fab:active { transform: scale(0.93); }
+/* iOS 26 próbkuje ukryte fixed overlaye nawet przy opacity: 0 — pełnoekranowy
+   overlay z blur(12px) zabarwiał liquid-glass pasek Safari (biały pasek wokół
+   searchbara przy przełączaniu kart). Zamknięty MUSI być display: none;
+   fade-in zapewnia @starting-style (Safari 17.5+). */
 .drawer-overlay {
   position: fixed; inset: 0; z-index: 1080;
   background: color-mix(in srgb, var(--bg) 30%, transparent); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
-  opacity: 0; pointer-events: none; transition: opacity .25s ease;
+  display: none; opacity: 0; pointer-events: none;
+  transition: opacity .25s ease, display .25s allow-discrete;
 }
-.drawer-overlay.open { opacity: 1; pointer-events: auto; }
+.drawer-overlay.open { display: block; opacity: 1; pointer-events: auto; }
+@starting-style { .drawer-overlay.open { opacity: 0; } }
 .drawer {
   position: fixed; top: 0; bottom: 0; left: 0; z-index: 1090;
   width: min(304px, 82vw); background: color-mix(in srgb, var(--surface) 68%, var(--bg)); border-right: 1px solid var(--line);
@@ -760,6 +766,14 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   position: fixed; top: 0; left: 0; right: 0; z-index: 30; pointer-events: none;
   height: calc(max(env(safe-area-inset-top), 34px));
   background: linear-gradient(180deg, var(--bg) 62%, transparent);
+}
+/* iOS 26: przezroczysty shim przy dolnej krawędzi (pełna szerokość, >=3px wys.,
+   w pasie ~3px od dołu) — to JEGO próbkuje liquid-glass pasek Safari, dzięki
+   maks. z-index wygrywa z każdym innym elementem fixed. Przezroczysty =>
+   pasek zostaje czystym szkłem nad treścią (jak na panektest.lol). */
+#ios-edge-shim {
+  position: fixed; left: 0; bottom: -1px; width: 100%; min-height: 6px;
+  background: transparent; pointer-events: none; z-index: 2147483647;
 }
 .pass-eye {
   position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
@@ -4248,10 +4262,12 @@ export default function App() {
     };
   }, []);
 
-  /* Jak panektest.lol: viewport BEZ viewport-fit=cover. Dolny pływający pasek
-     iOS 26 próbkuje najwyżej położony element fixed przy krawędzi — dajemy mu
-     pełnoekranową, prawie przezroczystą nakładkę #ios-glass-veil (niżej),
-     dzięki czemu pasek jest szklisty/przezroczysty i spójny, a nie biały. */
+  /* iOS 26: liquid-glass pasek Safari próbkuje elementy fixed/sticky przy krawędzi
+     (~3px od dołu / ~4px od góry, szerokość >=80%, wysokość >=3px) i przejmuje ich
+     background-color/backdrop-filter. viewport-fit=cover pozwala treści/tłu sięgać
+     pod pasek (bez tego Safari maluje własny biały podkład wokół searchbara),
+     a przezroczysty #ios-edge-shim na maks. z-index przejmuje próbkowanie, więc
+     żaden inny element nie zabarwia paska. */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
@@ -4259,18 +4275,23 @@ export default function App() {
       meta.setAttribute("name", "viewport");
       document.head.appendChild(meta);
     }
-    const content = (meta.getAttribute("content") || "width=device-width, initial-scale=1")
-      .replace(/,?\s*viewport-fit\s*=\s*cover/gi, "");
-    meta.setAttribute("content", content);
+    const content = meta.getAttribute("content") || "width=device-width, initial-scale=1";
+    if (!/viewport-fit\s*=\s*cover/i.test(content)) {
+      meta.setAttribute("content", content + ", viewport-fit=cover");
+    }
+    if (!document.getElementById("ios-edge-shim")) {
+      const shim = document.createElement("div");
+      shim.id = "ios-edge-shim";
+      document.body.appendChild(shim);
+    }
   }, []);
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
     const t = THEMES.find((x) => x.id === id) || THEMES[0];
-    /* BEZ meta theme-color i BEZ kolorowego shim-a przy dole: oba MALUJĄ dolny
-       pływający pasek iOS 26 solidnym kolorem (stąd „ciągle biały pasek"). Chcemy,
-       żeby pasek był przezroczysty i nakładał się na treść — to zapewnia
-       viewport-fit=cover (wyżej), dzięki któremu tło/treść sięgają pod pasek.
-       Czyścimy też ewentualny shim z wcześniejszej wersji bundla. */
+    /* BEZ meta theme-color i BEZ kolorowego shim-a: oba MALUJĄ dolny pasek iOS 26
+       solidnym kolorem (stąd „ciągle biały pasek"). Próbkowanie kontroluje
+       przezroczysty #ios-edge-shim (efekt wyżej). Czyścimy pozostałości
+       po wcześniejszych wersjach bundla. */
     document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
     document.getElementById("safari-glass-shim")?.remove();
     document.getElementById("ios-glass-veil")?.remove();
