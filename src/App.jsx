@@ -4308,7 +4308,12 @@ export default function App() {
     document.getElementById("ios-glass-veil")?.remove();
     document.getElementById("ios-edge-shim")?.remove();
     document.documentElement.style.colorScheme = t.scheme;
-    document.documentElement.style.background = t.bg;
+    /* html MUSI zostać przezroczysty (jak na panektest.lol: html transparent,
+       kolor strony tylko na body). Nieprzezroczyste tło korzenia to kolor,
+       który iOS 26 bierze do fallbacku chrome'u — pigułka robiła się wtedy
+       kryjąca (biała/motywowa) zamiast szklana. Body i tak propaguje swoje
+       tło na canvas, więc wizualnie strona wygląda identycznie. */
+    document.documentElement.style.background = "transparent";
     document.body.style.background = t.bg;
   }, [phase, data?.settings?.theme, authTheme]);
 
