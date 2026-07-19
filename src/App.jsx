@@ -380,8 +380,12 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   /* min-height ponad 100lvh: strona MUSI być zawsze scrollowalna, inaczej na
      krótkich podstronach (np. Cele) gest scrolla w dół nie ma jak zwinąć
      paska Safari do pigułki i chrome wisi rozwinięty na stałe. lvh = viewport
-     przy zwiniętym chrome, więc +2px gwarantuje scroll w obu stanach paska. */
-  .fin-root { position: relative; inset: auto; min-height: 100dvh; min-height: calc(100lvh + 2px); width: auto; overflow-x: clip; }
+     przy zwiniętym chrome. Zapas +140px (nie +2px!): animacja zwijania paska
+     do pigułki jest sprzężona z dystansem scrolla — przy zapasie rzędu
+     kilkudziesięciu px zwijanie startuje, scroll się kończy i pasek ODSKAKUJE
+     z powrotem; dopiero ~200px realnej drogi pozwala dokończyć zwinięcie
+     (na długich stronach pigułka działała od zawsze — patrz screenshot usera). */
+  .fin-root { position: relative; inset: auto; min-height: 100dvh; min-height: calc(100lvh + 140px); width: auto; overflow-x: clip; }
   .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
   .app-scroll::-webkit-scrollbar { display: none; }
   /* iOS Safari auto-zoomuje pole tekstowe z font-size < 16px przy focusie =>
