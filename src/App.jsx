@@ -733,15 +733,21 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 }
 .drawer-overlay.open { display: block; opacity: 1; pointer-events: auto; }
 @starting-style { .drawer-overlay.open { opacity: 0; } }
+/* Zamknięty drawer MUSI być display: none — to fixed element o szer. ~81%
+   (próg próbkowania iOS 26 to 80%) rozpięty na obie krawędzie; schowanie samym
+   transformem poza ekran nie chroni przed próbkowaniem liquid-glass paska.
+   Wjazd animuje @starting-style, wyjazd display .3s allow-discrete. */
 .drawer {
   position: fixed; top: 0; bottom: 0; left: 0; z-index: 1090;
   width: min(304px, 82vw); background: color-mix(in srgb, var(--surface) 68%, var(--bg)); border-right: 1px solid var(--line);
-  transform: translateX(-104%); transition: transform .3s cubic-bezier(.22,.9,.3,1), box-shadow .3s ease;
-  display: flex; flex-direction: column;
+  transform: translateX(-104%);
+  transition: transform .3s cubic-bezier(.22,.9,.3,1), box-shadow .3s ease, display .3s allow-discrete;
+  display: none; flex-direction: column;
   padding: calc(max(env(safe-area-inset-top), 34px) + 8px) 0 calc(max(env(safe-area-inset-bottom), 12px) + 8px);
   /* cień TYLKO gdy otwarta — inaczej rozmycie wystaje zza lewej krawędzi ekranu */
 }
-.drawer.open { transform: translateX(0); box-shadow: 24px 0 60px rgba(0,0,0,0.45); }
+.drawer.open { display: flex; transform: translateX(0); box-shadow: 24px 0 60px rgba(0,0,0,0.45); }
+@starting-style { .drawer.open { transform: translateX(-104%); box-shadow: none; } }
 .drawer-head { display: flex; align-items: center; gap: 12px; padding: 6px 16px 16px; border-bottom: 1px solid var(--line); margin-bottom: 14px; }
 .drawer-foot {
   display: flex; align-items: center; gap: 12px; margin: 10px 12px 0; padding: 12px;
@@ -767,14 +773,10 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   height: calc(max(env(safe-area-inset-top), 34px));
   background: linear-gradient(180deg, var(--bg) 62%, transparent);
 }
-/* iOS 26: przezroczysty shim przy dolnej krawędzi (pełna szerokość, >=3px wys.,
-   w pasie ~3px od dołu) — to JEGO próbkuje liquid-glass pasek Safari, dzięki
-   maks. z-index wygrywa z każdym innym elementem fixed. Przezroczysty =>
-   pasek zostaje czystym szkłem nad treścią (jak na panektest.lol). */
-#ios-edge-shim {
-  position: fixed; left: 0; bottom: -1px; width: 100%; min-height: 6px;
-  background: transparent; pointer-events: none; z-index: 2147483647;
-}
+/* iOS 26: przy dolnej krawędzi (pas ~3px, szer. >=80%) NIE WOLNO trzymać
+   ŻADNEGO elementu fixed/sticky — nawet przezroczystego. Liquid-glass pasek
+   Safari próbkuje pierwszy taki element i maluje się jego tłem/fallbackiem
+   zamiast zostać szkłem. panektest.lol (wzorzec) ma dół pusty. */
 .pass-eye {
   position: absolute; right: 7px; top: 50%; transform: translateY(-50%);
   width: 34px; height: 34px; border-radius: 10px; border: none; cursor: pointer;
@@ -4264,10 +4266,13 @@ export default function App() {
 
   /* iOS 26: liquid-glass pasek Safari próbkuje elementy fixed/sticky przy krawędzi
      (~3px od dołu / ~4px od góry, szerokość >=80%, wysokość >=3px) i przejmuje ich
-     background-color/backdrop-filter. viewport-fit=cover pozwala treści/tłu sięgać
-     pod pasek (bez tego Safari maluje własny biały podkład wokół searchbara),
-     a przezroczysty #ios-edge-shim na maks. z-index przejmuje próbkowanie, więc
-     żaden inny element nie zabarwia paska. */
+     background-color/backdrop-filter. Zweryfikowane na żywo na panektest.lol
+     (wzorzec, u którego pasek działa): przy dolnej krawędzi NIE MA ŻADNEGO
+     elementu fixed/sticky, viewport BEZ viewport-fit=cover, bez theme-color —
+     Safari spada wtedy na tło body (u nas malowane kolorem motywu) i renderuje
+     spójne szkło. Każdy fixed „shim" w pasie próbkowania (nawet przezroczysty)
+     psuł to, wymuszając biały/motywowy fallback. Jedyny fixed u panektest to
+     górny header z PRZEZROCZYSTYM background-color (biel maluje potomek). */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
@@ -4275,26 +4280,23 @@ export default function App() {
       meta.setAttribute("name", "viewport");
       document.head.appendChild(meta);
     }
-    const content = meta.getAttribute("content") || "width=device-width, initial-scale=1";
-    if (!/viewport-fit\s*=\s*cover/i.test(content)) {
-      meta.setAttribute("content", content + ", viewport-fit=cover");
-    }
-    if (!document.getElementById("ios-edge-shim")) {
-      const shim = document.createElement("div");
-      shim.id = "ios-edge-shim";
-      document.body.appendChild(shim);
-    }
+    const content = (meta.getAttribute("content") || "width=device-width, initial-scale=1")
+      .replace(/,?\s*viewport-fit\s*=\s*cover/gi, "");
+    meta.setAttribute("content", content);
   }, []);
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
     const t = THEMES.find((x) => x.id === id) || THEMES[0];
-    /* BEZ meta theme-color i BEZ kolorowego shim-a: oba MALUJĄ dolny pasek iOS 26
-       solidnym kolorem (stąd „ciągle biały pasek"). Próbkowanie kontroluje
-       przezroczysty #ios-edge-shim (efekt wyżej). Czyścimy pozostałości
-       po wcześniejszych wersjach bundla. */
+    /* BEZ meta theme-color i BEZ jakiegokolwiek shim-a przy dole: theme-color
+       jest ignorowany przez liquid glass, a KAŻDY fixed element w pasie
+       próbkowania (kolorowy, szklany i przezroczysty — wszystkie sprawdzone)
+       maluje pasek zamiast zostawić czyste szkło. Jak panektest.lol: dół ma być
+       PUSTY, Safari sam spada na tło body. Czyścimy pozostałości po
+       wcześniejszych wersjach bundla. */
     document.querySelectorAll('meta[name="theme-color"]').forEach((m) => m.remove());
     document.getElementById("safari-glass-shim")?.remove();
     document.getElementById("ios-glass-veil")?.remove();
+    document.getElementById("ios-edge-shim")?.remove();
     document.documentElement.style.colorScheme = t.scheme;
     document.documentElement.style.background = t.bg;
     document.body.style.background = t.bg;
