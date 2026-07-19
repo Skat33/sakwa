@@ -495,17 +495,24 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padd
 .to-top {
   transition: bottom .28s cubic-bezier(.22,.9,.3,1), opacity .2s ease, transform .2s ease;
 }
+/* jak .fab: przezroczysty fixed wrapper + wizualia na absolutnym .to-top-bg,
+   żeby iOS 26 nie doklejał poświaty pod pigułkę Safari */
 .to-top {
   width: 46px; height: 46px; border-radius: 16px;
-  background: var(--surface3); color: var(--text); border: 1px solid var(--line);
+  background: transparent; color: var(--text); border: none;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
-  box-shadow: var(--shadow); opacity: 0; transform: translateY(18px) scale(.8);
-  pointer-events: none; transition: opacity .25s ease, transform .32s cubic-bezier(.22,.9,.3,1), background .2s ease;
+  box-shadow: none; opacity: 0; transform: translateY(18px) scale(.8);
+  pointer-events: none; transition: opacity .25s ease, transform .32s cubic-bezier(.22,.9,.3,1);
+}
+.to-top-bg {
+  position: absolute; inset: 0; z-index: -1; border-radius: 16px;
+  background: var(--surface3); border: 1px solid var(--line); box-shadow: var(--shadow);
+  transition: background .2s ease;
 }
 .to-top.show { opacity: 1; transform: none; pointer-events: auto; }
 /* tryb diagnostyczny ?bare=1 (patrz efekt viewportu): bez fixed elementów przy dole */
 :root[data-bare="1"] .fab, :root[data-bare="1"] .to-top { display: none !important; }
-.to-top:hover { background: var(--surface2); }
+.to-top:hover .to-top-bg { background: var(--surface2); }
 .to-top:active { transform: scale(.9); }
 @media (min-width: 1024px) { .to-top { bottom: 26px; right: 26px; } }
 .recharts-wrapper, .recharts-surface, .recharts-wrapper * { user-select: none; -webkit-user-select: none; outline: none !important; }
@@ -590,7 +597,7 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 .sheet { border-radius: 22px; border: 1px solid var(--line); box-shadow: 0 40px 90px rgba(0,0,0,0.6); }
 .overlay { background: color-mix(in srgb, var(--bg) 42%, transparent); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
 .toast { border-radius: 999px; border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 88%, transparent); backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); box-shadow: var(--shadow); }
-.to-top { border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 88%, transparent); backdrop-filter: blur(10px); }
+.to-top-bg { border: 1px solid var(--line); background: color-mix(in srgb, var(--surface2) 88%, transparent); backdrop-filter: blur(10px); }
 
 /* historia jak w referencji 1: płaskie wiersze rozdzielone hairline wewnątrz karty */
 .tx-row { background: transparent; border: none; margin: 0; border-radius: 12px; }
@@ -722,13 +729,22 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: 2px;
   width: 16px; height: 3px; border-radius: 3px; background: var(--grad-accent);
 }
+/* FAB = PRZEZROCZYSTY fixed wrapper; gradient/cień maluje absolutny potomek
+   .fab-bg. iOS 26 analizuje tło/cień samego elementu fixed przy dolnej
+   krawędzi i dokładał pod pigułkę Safari rozjaśniającą poświatę (potwierdzone
+   testem ?bare=1 — bez FABa poświaty nie ma); absolutnych potomków nie
+   analizuje, więc wizualnie nic się nie zmienia, a poświata znika. */
 .fab {
   position: fixed; right: 18px; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 40;
   width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  background: var(--grad-accent); color: var(--on-accent);
-  box-shadow: 0 14px 34px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 1.5px 0 rgba(255,255,255,0.35);
+  background: transparent; color: var(--on-accent); box-shadow: none;
   transition: transform .15s ease;
+}
+.fab-bg {
+  position: absolute; inset: 0; z-index: -1; border-radius: 50%;
+  background: var(--grad-accent);
+  box-shadow: 0 14px 34px color-mix(in srgb, var(--accent) 50%, transparent), inset 0 1.5px 0 rgba(255,255,255,0.35);
 }
 .fab:active { transform: scale(0.93); }
 /* iOS 26 próbkuje ukryte fixed overlaye nawet przy opacity: 0 — pełnoekranowy
@@ -3870,6 +3886,7 @@ function ToTopButton() {
   return (
     <button className={`to-top no-print ${show ? "show" : ""}`} aria-label="Wróć na górę"
       onClick={() => scrollTopAll(true)}>
+      <span className="to-top-bg" aria-hidden="true" />
       <ArrowUp size={20} strokeWidth={2.4} />
     </button>
   );
@@ -4766,6 +4783,7 @@ export default function App() {
             </button>
           </aside>
           <button className="fab no-print" aria-label="Dodaj transakcję" onClick={() => setTxForm({})}>
+            <span className="fab-bg" aria-hidden="true" />
             <Plus size={24} strokeWidth={2.5} />
           </button>
         </>
