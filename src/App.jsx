@@ -4266,13 +4266,14 @@ export default function App() {
 
   /* iOS 26: liquid-glass pasek Safari próbkuje elementy fixed/sticky przy krawędzi
      (~3px od dołu / ~4px od góry, szerokość >=80%, wysokość >=3px) i przejmuje ich
-     background-color/backdrop-filter. Zweryfikowane na żywo na panektest.lol
-     (wzorzec, u którego pasek działa): przy dolnej krawędzi NIE MA ŻADNEGO
-     elementu fixed/sticky, viewport BEZ viewport-fit=cover, bez theme-color —
-     Safari spada wtedy na tło body (u nas malowane kolorem motywu) i renderuje
-     spójne szkło. Każdy fixed „shim" w pasie próbkowania (nawet przezroczysty)
-     psuł to, wymuszając biały/motywowy fallback. Jedyny fixed u panektest to
-     górny header z PRZEZROCZYSTYM background-color (biel maluje potomek). */
+     background-color/backdrop-filter. Recepta (SO 79781261 + 1ar.io + panektest):
+     1) pas próbkowania przy dole musi być PUSTY — każdy fixed „shim" (nawet
+        przezroczysty) wymusza biały/motywowy fallback zamiast szkła;
+     2) viewport-fit=cover — bez niego strona KOŃCZY SIĘ nad rozwiniętym paskiem
+        i Safari wypełnia lukę za searchbarem solidnym kolorem (biały blok przy
+        rozwiniętym pasku, szkło dopiero po zescrollowaniu, gdy pigułka pływa
+        nad treścią); z cover treść sięga pod pasek i szkło ma co pokazywać;
+     3) ukryte fixed overlaye = display:none (opacity:0 też jest próbkowane). */
   useEffect(() => {
     let meta = document.querySelector('meta[name="viewport"]');
     if (!meta) {
@@ -4280,9 +4281,10 @@ export default function App() {
       meta.setAttribute("name", "viewport");
       document.head.appendChild(meta);
     }
-    const content = (meta.getAttribute("content") || "width=device-width, initial-scale=1")
-      .replace(/,?\s*viewport-fit\s*=\s*cover/gi, "");
-    meta.setAttribute("content", content);
+    const content = meta.getAttribute("content") || "width=device-width, initial-scale=1";
+    if (!/viewport-fit\s*=\s*cover/i.test(content)) {
+      meta.setAttribute("content", content + ", viewport-fit=cover");
+    }
   }, []);
   useEffect(() => {
     const id = (phase === "app" ? data?.settings?.theme : authTheme) || "dark";
