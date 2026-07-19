@@ -503,6 +503,8 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padd
   pointer-events: none; transition: opacity .25s ease, transform .32s cubic-bezier(.22,.9,.3,1), background .2s ease;
 }
 .to-top.show { opacity: 1; transform: none; pointer-events: auto; }
+/* tryb diagnostyczny ?bare=1 (patrz efekt viewportu): bez fixed elementów przy dole */
+:root[data-bare="1"] .fab, :root[data-bare="1"] .to-top { display: none !important; }
 .to-top:hover { background: var(--surface2); }
 .to-top:active { transform: scale(.9); }
 @media (min-width: 1024px) { .to-top { bottom: 26px; right: 26px; } }
@@ -4292,6 +4294,12 @@ export default function App() {
     const content = meta.getAttribute("content") || "width=device-width, initial-scale=1";
     if (!/viewport-fit\s*=\s*cover/i.test(content)) {
       meta.setAttribute("content", content + ", viewport-fit=cover");
+    }
+    /* tryb diagnostyczny ?bare=1 — chowa FAB i przycisk „do góry" (jedyne fixed
+       elementy przy dole), żeby na iPhonie rozstrzygnąć, czy poświata za
+       pigułką Safari pochodzi od nich, czy od systemowego scroll-edge-effect. */
+    if (new URLSearchParams(window.location.search).has("bare")) {
+      document.documentElement.setAttribute("data-bare", "1");
     }
   }, []);
   useEffect(() => {
