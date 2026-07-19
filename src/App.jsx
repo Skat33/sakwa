@@ -502,7 +502,8 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padd
   background: transparent; color: var(--text); border: none;
   display: flex; align-items: center; justify-content: center; cursor: pointer;
   box-shadow: none; opacity: 0; transform: translateY(18px) scale(.8);
-  pointer-events: none; transition: opacity .25s ease, transform .32s cubic-bezier(.22,.9,.3,1);
+  pointer-events: none;
+  transition: opacity .25s ease, transform .32s cubic-bezier(.22,.9,.3,1), display .25s allow-discrete;
 }
 .to-top-bg {
   position: absolute; inset: 0; z-index: -1; border-radius: 16px;
@@ -739,7 +740,15 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   background: transparent; color: var(--on-accent); box-shadow: none;
-  transition: transform .15s ease;
+  transition: transform .15s ease, opacity .2s ease, display .2s allow-discrete;
+}
+/* mobile, scroll w dół (= zwinięta pigułka iOS 26): pływające przyciski MUSZĄ
+   zniknąć z render tree (display:none), inaczej Safari dokłada pod pigułkę
+   rozjaśniającą poświatę — nawet gdy sam element fixed jest przezroczysty,
+   a wizualia niesie absolutny potomek. Powrót animuje @starting-style. */
+@media (max-width: 1023px) {
+  .fin-root[data-nav-hidden="1"] .fab,
+  .fin-root[data-nav-hidden="1"] .to-top { display: none; opacity: 0; transform: scale(.55); pointer-events: none; }
 }
 .fab-bg {
   position: absolute; inset: 0; z-index: -1; border-radius: 50%;
@@ -4159,23 +4168,41 @@ export default function App() {
     };
   }, [phase, isDesktop, view]);
 
-  /* mobile: chowaj navbar przy scrollu w dół, pokazuj przy scrollu w górę */
+  /* mobile: chowaj pływające przyciski (FAB, „do góry") przy scrollu w dół,
+     pokazuj przy scrollu w górę. Na mobile scrolluje się DOKUMENT (nie
+     .app-scroll — tam scroll nigdy nie odpala), stąd nasłuch na window.
+     Stan „scroll w dół" = stan zwiniętej pigułki iOS 26: bez widocznego
+     elementu fixed przy dole Safari nie dokłada rozjaśniającej poświaty pod
+     pigułkę (przyciski wracają przy scrollu w górę, gdy pasek i tak się
+     rozwija — wtedy poświaty nie ma). */
   useEffect(() => {
     if (phase !== "app" || isDesktop) { setNavHidden(false); return; }
-    const el = document.querySelector(".app-scroll");
-    if (!el) return;
-    let last = el.scrollTop;
+    let last = window.scrollY;
     const onScroll = () => {
-      const y = el.scrollTop;
+      const y = window.scrollY;
       const dy = y - last;
       if (y < 60) setNavHidden(false);
       else if (dy > 8) setNavHidden(true);
       else if (dy < -12) setNavHidden(false);
       last = y;
     };
-    el.addEventListener("scroll", onScroll, { passive: true });
-    return () => el.removeEventListener("scroll", onScroll);
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
   }, [phase, isDesktop, view]);
+
+  /* mobile: wejście na krótszą podstronę z zescrollowanej dłuższej przycina
+     scroll do dna nowej strony — użytkownik ląduje w pustym rozbiegu, a
+     przycięcie w dół Safari traktuje jak scroll w górę (rozwija pasek) i nie
+     zostaje już drogi, by go zwinąć. Gdy scroll jest przy samym dnie po
+     zmianie widoku, zaczynamy stronę czysto od góry. */
+  useEffect(() => {
+    if (phase !== "app" || isDesktop) return;
+    const raf = requestAnimationFrame(() => requestAnimationFrame(() => {
+      const maxY = document.documentElement.scrollHeight - window.innerHeight;
+      if (maxY > 0 && window.scrollY > maxY - 120) window.scrollTo(0, 0);
+    }));
+    return () => cancelAnimationFrame(raf);
+  }, [view]); // eslint-disable-line
 
   /* auto-logout po 1h nieaktywności (chyba że użytkownik wybrał "30 dni") */
   useEffect(() => {
