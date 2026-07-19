@@ -377,7 +377,11 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim.
      overflow-x: clip chroni przed poziomym scrollem i jest neutralny dla position:sticky. */
   html, body { height: auto; min-height: 100%; overflow-x: clip; overflow-y: visible; overscroll-behavior-y: contain; }
-  .fin-root { position: relative; inset: auto; min-height: 100dvh; width: auto; overflow-x: clip; }
+  /* min-height ponad 100lvh: strona MUSI być zawsze scrollowalna, inaczej na
+     krótkich podstronach (np. Cele) gest scrolla w dół nie ma jak zwinąć
+     paska Safari do pigułki i chrome wisi rozwinięty na stałe. lvh = viewport
+     przy zwiniętym chrome, więc +2px gwarantuje scroll w obu stanach paska. */
+  .fin-root { position: relative; inset: auto; min-height: 100dvh; min-height: calc(100lvh + 2px); width: auto; overflow-x: clip; }
   .app-scroll { height: auto; min-height: 100dvh; overflow: visible; }
   .app-scroll::-webkit-scrollbar { display: none; }
   /* iOS Safari auto-zoomuje pole tekstowe z font-size < 16px przy focusie =>
