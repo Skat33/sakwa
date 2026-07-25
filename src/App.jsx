@@ -392,6 +392,7 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
      po odpaleniu klawiatury strona skacze i przesuwa się w bok (w lewo).
      16px na polach wejściowych wyłącza ten zoom (patrz też .pin-hidden). */
   .input, .select, input, textarea, select { font-size: 16px; }
+}
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
 .bottom-nav {
   position: fixed; bottom: var(--vv-off, 0px); left: 0; right: 0; z-index: 40;
