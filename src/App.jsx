@@ -2727,6 +2727,10 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
   const [carForm, setCarForm] = useState(null);
   const [stationForm, setStationForm] = useState(null);
   const [stationSort, setStationSort] = useState("asc");
+  /* Paliwo pokazuje domyślnie CAŁY okres (nie bieżący miesiąc jak reszta apki) —
+     spalanie i koszty auta mają sens dopiero na dłuższej próbce. Miesiąc można
+     wybrać ręcznie w selektorze nad kartami aut. */
+  const [period, setPeriod] = useState("all");
   const [allRefuelsOpen, setAllRefuelsOpen] = useState(false);
   const [allStationsOpen, setAllStationsOpen] = useState(false);
   const isMobileF = useMedia("(max-width: 767px)");
@@ -2745,31 +2749,61 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
   }, [data.cars]); // eslint-disable-line
 
   const car = data.cars.find((c) => c.id === activeCar);
-  const refuels = useMemo(() =>
-    data.refuels.filter((r) => r.carId === activeCar).sort((a, b) => a.odometer - b.odometer),
-    [data.refuels, activeCar]);
+
+  /* Każde tankowanie niesie dystans przejechany na tym baku (r.distance).
+     Wpisy sprzed tej zmiany mają tylko stan licznika (r.odometer) — dystans
+     odtwarzamy z różnicy kolejnych liczników, żeby stare dane dalej liczyły
+     się do spalania. Lista musi być pełna (bez filtra miesiąca), inaczej
+     pierwszy wpis w miesiącu straciłby swój dystans. */
+  const carRefuels = useMemo(() => {
+    const list = data.refuels
+      .filter((r) => r.carId === activeCar)
+      .sort((a, b) => (a.date === b.date ? (a.odometer ?? 0) - (b.odometer ?? 0) : a.date < b.date ? -1 : 1));
+    let prevOdo = null;
+    return list.map((r) => {
+      const raw = r.distance != null
+        ? r.distance
+        : (r.odometer != null && prevOdo != null ? r.odometer - prevOdo : null);
+      if (r.odometer != null) prevOdo = r.odometer;
+      return { ...r, dist: raw != null && raw > 0 ? raw : null };
+    });
+  }, [data.refuels, activeCar]);
+
+  const monthOpts = useMemo(() => {
+    const set = new Set(data.refuels.map((r) => ym(r.date)));
+    return [...set].sort().reverse();
+  }, [data.refuels]);
+  useEffect(() => {
+    if (period !== "all" && !monthOpts.includes(period)) setPeriod("all");
+  }, [monthOpts]); // eslint-disable-line
+
+  const refuels = useMemo(
+    () => (period === "all" ? carRefuels : carRefuels.filter((r) => ym(r.date) === period)),
+    [carRefuels, period]);
 
   const stats = useMemo(() => {
     if (refuels.length === 0) return null;
     const totalLiters = refuels.reduce((s, r) => s + r.liters, 0);
     const totalCost = refuels.reduce((s, r) => s + r.cost, 0);
-    const first = refuels[0], last = refuels[refuels.length - 1];
-    const distance = refuels.length > 1 ? last.odometer - first.odometer : 0;
-    const litersAfterFirst = totalLiters - first.liters;
-    const consumption = distance > 0 ? (litersAfterFirst / distance) * 100 : null;
+    /* spalanie liczymy tylko z tankowań, które mają znany dystans */
+    const measured = refuels.filter((r) => r.dist != null);
+    const distance = measured.reduce((s, r) => s + r.dist, 0);
+    const measuredLiters = measured.reduce((s, r) => s + r.liters, 0);
+    const consumption = distance > 0 ? (measuredLiters / distance) * 100 : null;
     const avgPrice = totalLiters > 0 ? totalCost / totalLiters : 0;
+    const first = refuels[0], last = refuels[refuels.length - 1];
     const months = Math.max(1, (new Date(last.date) - new Date(first.date)) / (30.44 * 864e5));
     return {
       distance, consumption, avgPrice, totalCost, totalLiters,
-      count: refuels.length, currentOdo: last.odometer,
-      monthlyDist: refuels.length > 1 ? distance / months : null,
+      count: refuels.length, measuredCount: measured.length,
+      monthlyDist: period === "all" && distance > 0 && refuels.length > 1 ? distance / months : null,
       costPer100: consumption != null ? consumption * avgPrice : null,
     };
-  }, [refuels]);
+  }, [refuels, period]);
 
   const stationRank = useMemo(() => {
     const map = {};
-    data.refuels.forEach((r) => {
+    (period === "all" ? data.refuels : data.refuels.filter((r) => ym(r.date) === period)).forEach((r) => {
       map[r.stationId] = map[r.stationId] || { liters: 0, cost: 0, n: 0 };
       map[r.stationId].liters += r.liters; map[r.stationId].cost += r.cost; map[r.stationId].n++;
     });
@@ -2781,7 +2815,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
       if (a.avg == null) return 1; if (b.avg == null) return -1;
       return stationSort === "asc" ? a.avg - b.avg : b.avg - a.avg;
     });
-  }, [data.refuels, data.stations, stationSort]);
+  }, [data.refuels, data.stations, stationSort, period]);
 
   const delRefuel = (r) => confirm(
     { title: "Usunąć tankowanie?", desc: `Tankowanie z ${fmtDate(r.date)} (${r.liters} l za ${fmtMoney(r.cost, main)}) zostanie trwale usunięte.`, danger: true, confirmLabel: "Usuń" },
@@ -2808,6 +2842,26 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           <button className="btn btn-primary" style={{ width: "100%", gridColumn: "1 / -1" }} disabled={!data.cars.length || !data.stations.length} onClick={() => setOpenRefuel(true)}>
             <Droplets size={16} /> Dodaj tankowanie
           </button>
+        </div>
+      )}
+
+      {monthOpts.length > 0 && (
+        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--muted)", fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
+            <CalendarDays size={15} /> Okres
+          </div>
+          <select className="select" style={{ flex: 1, minWidth: 0, maxWidth: 280 }} value={period}
+            onChange={(e) => setPeriod(e.target.value)} aria-label="Okres statystyk paliwa">
+            <option value="all">Cały okres — wszystkie tankowania</option>
+            {monthOpts.map((m) => (
+              <option key={m} value={m}>{MONTHS_FULL[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</option>
+            ))}
+          </select>
+          {period !== "all" && (
+            <button className="btn btn-ghost" style={{ padding: "7px 12px", fontSize: 12.5 }} onClick={() => setPeriod("all")}>
+              Pokaż wszystko
+            </button>
+          )}
         </div>
       )}
 
@@ -2840,28 +2894,31 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
             <>
               {stats ? (
                 <div className="stat-grid stagger">
-                  <StatCard icon={Gauge} label="Spalanie" value={stats.consumption != null ? `${stats.consumption.toFixed(1)} l/100km` : "—"} sub={stats.consumption != null ? "od pełna do pełna" : "potrzeba ≥2 tankowań"} />
+                  <StatCard icon={Gauge} label="Spalanie" value={stats.consumption != null ? `${stats.consumption.toFixed(1)} l/100km` : "—"}
+                    sub={stats.consumption != null ? `z ${stats.measuredCount} ${stats.measuredCount === 1 ? "tankowania" : "tankowań"}` : "podaj dystans przy tankowaniu"} />
                   <StatCard icon={Coins} label="Śr. cena / litr" value={fmtMoney(stats.avgPrice, main)} />
                   <StatCard icon={Wallet} label="Łączny koszt" value={fmtMoney(stats.totalCost, main, true)} />
                   <StatCard icon={MapPin} label="Dystans" value={`${stats.distance.toLocaleString("pl-PL")} km`} sub={stats.monthlyDist ? `~${Math.round(stats.monthlyDist).toLocaleString("pl-PL")} km/mies.` : undefined} />
-                  <StatCard icon={Gauge} label="Przebieg" value={`${stats.currentOdo.toLocaleString("pl-PL")} km`} />
                   <StatCard icon={Droplets} label="Tankowania" value={stats.count} sub={`${stats.totalLiters.toFixed(0)} l łącznie`} />
                   {stats.costPer100 != null && <StatCard icon={Percent} label="Koszt / 100 km" value={fmtMoney(stats.costPer100, main)} />}
                 </div>
               ) : (
-                <EmptyState icon={Droplets} title="Brak tankowań" desc={`Dodaj pierwsze tankowanie dla auta ${car.name}, aby zobaczyć statystyki.`} />
+                <EmptyState icon={Droplets} title={period === "all" ? "Brak tankowań" : "Brak tankowań w tym miesiącu"}
+                  desc={period === "all"
+                    ? `Dodaj pierwsze tankowanie dla auta ${car.name}, aby zobaczyć statystyki.`
+                    : `Auto ${car.name} nie ma tankowań w wybranym miesiącu. Wybierz „Cały okres", aby zobaczyć wszystkie.`}
+                  action={period !== "all" ? <button className="btn btn-ghost" onClick={() => setPeriod("all")}>Pokaż cały okres</button> : undefined} />
               )}
 
-              {refuels.length >= 3 && (
+              {refuels.filter((r) => r.dist != null).length >= 3 && (
                 <div className="card" style={{ padding: 18 }}>
                   <div style={{ fontWeight: 800, marginBottom: 12 }}>Spalanie w czasie <span style={{ color: "var(--muted)", fontSize: 12.5, fontWeight: 700 }}>· l/100km</span></div>
                   <div style={{ width: "100%", height: 190 }}>
                     <ResponsiveContainer>
-                      <LineChart data={refuels.slice(1).map((r, i) => {
-                        const prev = refuels[i];
-                        const dist = r.odometer - prev.odometer;
-                        return { label: `${r.date.slice(8)}.${r.date.slice(5, 7)}`, Spalanie: dist > 0 ? Math.round((r.liters / dist) * 1000) / 10 : null };
-                      }).filter((p) => p.Spalanie != null)}>
+                      <LineChart data={refuels.filter((r) => r.dist != null).map((r) => ({
+                        label: `${r.date.slice(8)}.${r.date.slice(5, 7)}`,
+                        Spalanie: Math.round((r.liters / r.dist) * 1000) / 10,
+                      }))}>
                         <CartesianGrid stroke="var(--line)" vertical={false} />
                         <XAxis dataKey="label" tick={{ fill: "var(--muted)", fontSize: 10.5, fontWeight: 700 }} axisLine={false} tickLine={false} minTickGap={24} />
                         <YAxis tick={{ fill: "var(--muted)", fontSize: 11, fontWeight: 700 }} axisLine={false} tickLine={false} width={38} domain={["auto", "auto"]} />
@@ -2883,7 +2940,11 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                       <div className="icon-badge" style={{ background: "#F9731622", color: "#F97316" }}><Fuel size={19} /></div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{st?.name || "Stacja"} · {r.liters} l</div>
-                        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>{fmtDate(r.date)} · {r.odometer.toLocaleString("pl-PL")} km · {fmtMoney(r.cost / r.liters, main)}/l</div>
+                        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+                          {fmtDate(r.date)} · {r.dist != null
+                            ? `${r.dist.toLocaleString("pl-PL")} km · ${((r.liters / r.dist) * 100).toFixed(1)} l/100km`
+                            : "brak dystansu"} · {fmtMoney(r.cost / r.liters, main)}/l
+                        </div>
                       </div>
                       <div className="sens" style={{ fontWeight: 800 }}>{fmtMoney(r.cost, main)}</div>
                       <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Usuń tankowanie" onClick={() => delRefuel(r)}><Trash2 size={15} /></button>
@@ -3039,25 +3100,21 @@ function RefuelForm({ data, main, defaultCar, onSave, onClose, onNeedCar, onNeed
   const [cost, setCost] = useState("");
   const [date, setDate] = useState(todayISO());
   const [errs, setErrs] = useState({});
-  const prevOdo = useMemo(() => {
-    const rs = data.refuels.filter((r) => r.carId === carId);
-    return rs.length ? Math.max(...rs.map((r) => r.odometer)) : null;
-  }, [data.refuels, carId]);
-  const isFirst = prevOdo == null;
-  const l = parseNum(liters), c = parseNum(cost);
+  const l = parseNum(liters), c = parseNum(cost), dNum = parseNum(dist);
   const ppl = !isNaN(l) && l > 0 && !isNaN(c) && c > 0 ? c / l : null;
+  /* podgląd spalania na żywo — z litrów i dystansu tego tankowania */
+  const cons = !isNaN(l) && l > 0 && !isNaN(dNum) && dNum > 0 ? (l / dNum) * 100 : null;
 
   const submit = () => {
     const e = {}; const d = parseNum(dist);
     if (!carId) e.car = "Wybierz samochód.";
     if (!stationId) e.station = "Wybierz stację.";
-    if (isNaN(d) || d <= 0) e.dist = isFirst ? "Podaj aktualny przebieg auta (większy od 0)." : "Dystans musi być większy od 0 km.";
-    else if (!isFirst && d > 5000) e.dist = "Dystans na jednym baku wygląda na zbyt duży (max 5000 km).";
+    if (isNaN(d) || d <= 0) e.dist = "Podaj dystans przejechany na tym tankowaniu (większy od 0 km).";
+    else if (d > 5000) e.dist = "Dystans na jednym baku wygląda na zbyt duży (max 5000 km).";
     if (isNaN(l) || l <= 0) e.liters = "Litry muszą być większe od 0.";
     if (isNaN(c) || c <= 0) e.cost = "Kwota musi być większa od 0.";
     setErrs(e); if (Object.keys(e).length) return;
-    const odometer = isFirst ? Math.round(d) : prevOdo + Math.round(d);
-    onSave({ id: uid(), carId, stationId, odometer, liters: Math.round(l * 100) / 100, cost: Math.round(c * 100) / 100, date });
+    onSave({ id: uid(), carId, stationId, distance: Math.round(d), liters: Math.round(l * 100) / 100, cost: Math.round(c * 100) / 100, date });
   };
 
   if (!data.cars.length) return <EmptyState icon={CarFront} title="Najpierw dodaj auto" desc="Aby zapisać tankowanie, potrzebny jest samochód." action={<button className="btn btn-primary" onClick={onNeedCar}>Dodaj samochód</button>} />;
@@ -3075,13 +3132,11 @@ function RefuelForm({ data, main, defaultCar, onSave, onClose, onNeedCar, onNeed
           </select>
         ) : <button className="btn btn-ghost" style={{ width: "100%" }} onClick={onNeedStation}><Plus size={15} /> Dodaj stację paliw</button>}
       </Field>
-      <Field label={isFirst ? "Aktualny przebieg auta (pierwsze tankowanie)" : "Dystans od ostatniego tankowania"} error={errs.dist}>
-        <NumInput value={dist} onChange={setDist} error={errs.dist} suffix="km" placeholder={isFirst ? "np. 154 300" : "np. 520"} />
-        {!isFirst && (
-          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700, marginTop: 6 }}>
-            Licznik po tym tankowaniu: {(prevOdo + (parseNum(dist) > 0 ? Math.round(parseNum(dist)) : 0)).toLocaleString("pl-PL")} km
-          </div>
-        )}
+      <Field label="Przejechany dystans na tym tankowaniu" error={errs.dist}>
+        <NumInput value={dist} onChange={setDist} error={errs.dist} suffix="km" placeholder="np. 500" />
+        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 700, marginTop: 6 }}>
+          Ile kilometrów przejechałeś na paliwie z tego tankowania.
+        </div>
       </Field>
       <div style={{ display: "flex", gap: 10 }}>
         <div style={{ flex: 1 }}><Field label="Litry" error={errs.liters}><NumInput value={liters} onChange={setLiters} error={errs.liters} suffix="l" /></Field></div>
@@ -3089,6 +3144,7 @@ function RefuelForm({ data, main, defaultCar, onSave, onClose, onNeedCar, onNeed
       </div>
       <div className="card" style={{ padding: 12, marginBottom: 14, background: "var(--accent-dim)", boxShadow: "none", border: "none", textAlign: "center", fontWeight: 800, color: "var(--accent)" }}>
         {ppl != null ? `Cena za litr: ${fmtMoney(ppl, main)}` : "Cena/litr policzy się automatycznie"}
+        {cons != null && <div style={{ marginTop: 4 }}>Spalanie: {cons.toFixed(1)} l/100km</div>}
       </div>
       <Field label="Data"><input type="date" className="input" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} /></Field>
       <div style={{ display: "flex", gap: 10 }}>
