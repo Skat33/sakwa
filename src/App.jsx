@@ -109,9 +109,32 @@ const saveLocalTheme = (id) => { try { localStorage.setItem(THEME_LS_KEY, id); }
 
 async function dbLoad(userId) {
   const { data: row, error } = await supabase
-    .from("user_data").select("data").eq("user_id", userId).maybeSingle();
+    .from("user_data").select("data, updated_at").eq("user_id", userId).maybeSingle();
   if (error) throw error;
-  return row?.data || null;
+  return { data: row?.data || null, updatedAt: row?.updated_at || null };
+}
+
+/* ---------------- offline: kolejka zmian na urządzeniu ----------------
+   Zapis do bazy to upsert CAŁEGO dokumentu, więc „kolejką" jest po prostu
+   ostatni known-good stan danych. Trzymamy go w localStorage pod kluczem
+   z id użytkownika i wypychamy, gdy baza wróci. */
+const offlineKey = (userId) => `sakwa-offline-${userId}`;
+function offlineRead(userId) {
+  try {
+    const raw = localStorage.getItem(offlineKey(userId));
+    if (!raw) return null;
+    const p = JSON.parse(raw);
+    return p && p.data ? p : null;
+  } catch { return null; }
+}
+function offlineWrite(userId, data) {
+  try {
+    localStorage.setItem(offlineKey(userId), JSON.stringify({ savedAt: new Date().toISOString(), data }));
+    return true;
+  } catch { return false; } // np. przepełniony localStorage
+}
+function offlineClear(userId) {
+  try { localStorage.removeItem(offlineKey(userId)); } catch {}
 }
 async function dbSave(userId, data) {
   const { error } = await supabase
@@ -812,6 +835,13 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   box-shadow: var(--shadow);
 }
 .db-banner .db-ic { flex-shrink: 0; color: var(--neg); display: flex; }
+/* wariant offline: praca trwa normalnie, więc ton informacyjny, nie alarmowy.
+   MUSI stać po regułach bazowych — ta sama specyficzność, wygrywa późniejsza. */
+.db-banner-offline {
+  border-color: color-mix(in srgb, var(--warn) 45%, transparent);
+  background: color-mix(in srgb, var(--warn) 13%, var(--surface));
+}
+.db-banner-offline .db-ic { color: var(--warn); }
 .db-banner .db-t { font-weight: 800; font-size: 13.5; color: var(--text); }
 .db-banner .db-d { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-top: 2px; line-height: 1.45; }
 .db-banner button { flex-shrink: 0; }
@@ -1469,6 +1499,8 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onAdd, onEditT
   const animBalance = useCountUp(balance);
   const recent = [...data.transactions].sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)).slice(0, 5);
   const slices = catSlices(monthTx, data.categories, toMain);
+  /* przypomnienia o rachunkach: okno 7 dni do przodu */
+  const upcoming = useMemo(() => upcomingRecurring(data, 7), [data.recurring, data.transactions]); // eslint-disable-line
   const trend = (cur, prv) => (prv > 0 ? ((cur - prv) / prv) * 100 : null);
   const hidden = !!data.settings.hideBalance;
   const [pinSheet, setPinSheet] = useState(null); // "setup" | "enter" | "forgot"
@@ -1598,6 +1630,42 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onAdd, onEditT
         <StatCard icon={TrendingUp} label="Prognoza salda" value={fmtMoney(forecast, main, true)} tone={forecast >= balance ? "pos" : "neg"}
           sub={period ? `koniec okresu za ~${daysRemaining} dni · tempo wydatków` : "na koniec miesiąca · tempo wydatków + cykliczne"} />
       </StatRail>
+
+      {upcoming.length > 0 && (
+        <div className="card" style={{ padding: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800 }}>
+              <CalendarDays size={17} style={{ color: "var(--warn)" }} /> Nadchodzące płatności
+            </div>
+            <button className="btn btn-ghost" style={{ padding: "6px 11px", fontSize: 12.5 }} onClick={() => go("settings")}>
+              Cykliczne <ChevronRight size={14} />
+            </button>
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+            {upcoming.map((u) => {
+              const cat = data.categories.find((c) => c.id === u.categoryId);
+              const when = u.daysLeft === 0 ? "dziś" : u.daysLeft === 1 ? "jutro" : `za ${u.daysLeft} dni`;
+              return (
+                <div key={`${u.id}-${u.date}`} style={{ display: "flex", alignItems: "center", gap: 11 }}>
+                  <span className="icon-badge" style={{ width: 34, height: 34, borderRadius: 11, flexShrink: 0,
+                    background: (cat?.color || UNCAT.color) + "22", color: cat?.color || UNCAT.color }}>
+                    <Repeat size={16} />
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{u.name}</div>
+                    <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>{when} · {fmtDate(u.date)}</div>
+                  </div>
+                  <span className="sens amt-pill" style={{ flexShrink: 0,
+                    background: u.type === "income" ? "var(--accent-dim)" : "var(--warn)22",
+                    color: u.type === "income" ? "var(--accent)" : "var(--warn)" }}>
+                    {u.type === "income" ? "+" : "−"}{fmtMoney(toMain(u.amount, u.currency), main)}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {budgetRows.length > 0 && (
         <div className="card" style={{ padding: 18 }}>
@@ -2451,7 +2519,7 @@ function HCarousel({ title, count, chipTone, children, emptyText }) {
 }
 
 function Goals({ data, helpers, update, toast, confirm }) {
-  const { main, dbDown, addBlocked } = helpers;
+  const { main, addDisabled, addBlocked } = helpers;
   const wrapCards = useMedia("(min-width: 768px)");
   const [form, setForm] = useState(null);
   const [pay, setPay] = useState(null);
@@ -2537,7 +2605,7 @@ function Goals({ data, helpers, update, toast, confirm }) {
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1 className="page-title">Cele</h1>
-        <button className="btn btn-primary" disabled={dbDown} onClick={() => { if (!addBlocked()) setForm({}); }}><Plus size={16} /> Nowy cel</button>
+        <button className="btn btn-primary" disabled={addDisabled} onClick={() => { if (!addBlocked()) setForm({}); }}><Plus size={16} /> Nowy cel</button>
       </div>
       {data.goals.length > 0 && (
         <div className="card" style={{ padding: 18 }}>
@@ -2550,7 +2618,7 @@ function Goals({ data, helpers, update, toast, confirm }) {
       )}
       {data.goals.length === 0 ? (
         <EmptyState icon={Target} title="Brak celów" desc="Utwórz pierwszy cel oszczędnościowy — wakacje, poduszkę finansową albo nowy sprzęt."
-          action={<button className="btn btn-primary" disabled={dbDown} onClick={() => { if (!addBlocked()) setForm({}); }}><Plus size={16} /> Utwórz cel</button>} />
+          action={<button className="btn btn-primary" disabled={addDisabled} onClick={() => { if (!addBlocked()) setForm({}); }}><Plus size={16} /> Utwórz cel</button>} />
       ) : isMobileG ? (
         <>
           <HCarousel title="Aktywne" count={activeGoals.length} emptyText="Brak aktywnych celów — wszystkie osiągnięte, gratulacje!">
@@ -2825,7 +2893,7 @@ function Reports({ data, helpers, go, toast, confirm, update }) {
 }
 
 function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefuel }) {
-  const { main, dbDown, addBlocked } = helpers;
+  const { main, addDisabled, addBlocked } = helpers;
   const [activeCar, setActiveCar] = useState(data.cars[0]?.id || null);
   const [carForm, setCarForm] = useState(null);
   const [stationForm, setStationForm] = useState(null);
@@ -2931,9 +2999,9 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
         <h1 className="page-title" style={{ margin: 0 }}>Paliwo</h1>
         {!isMobileF && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-ghost" disabled={dbDown} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
-            <button className="btn btn-ghost" disabled={dbDown} onClick={() => { if (!addBlocked()) setStationForm({}); }}><Plus size={15} /> Stacja</button>
-            <button className="btn btn-primary" disabled={dbDown || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
+            <button className="btn btn-ghost" disabled={addDisabled} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
+            <button className="btn btn-ghost" disabled={addDisabled} onClick={() => { if (!addBlocked()) setStationForm({}); }}><Plus size={15} /> Stacja</button>
+            <button className="btn btn-primary" disabled={addDisabled || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
               <Droplets size={16} /> Dodaj tankowanie
             </button>
           </div>
@@ -2941,9 +3009,9 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
       </div>
       {isMobileF && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: -6 }}>
-          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={dbDown} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
-          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={dbDown} onClick={() => { if (!addBlocked()) setStationForm({}); }}><Plus size={15} /> Stacja</button>
-          <button className="btn btn-primary" style={{ width: "100%", gridColumn: "1 / -1" }} disabled={dbDown || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
+          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={addDisabled} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
+          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={addDisabled} onClick={() => { if (!addBlocked()) setStationForm({}); }}><Plus size={15} /> Stacja</button>
+          <button className="btn btn-primary" style={{ width: "100%", gridColumn: "1 / -1" }} disabled={addDisabled || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
             <Droplets size={16} /> Dodaj tankowanie
           </button>
         </div>
@@ -3367,13 +3435,14 @@ function CarsStationsManager({ data, update, toast, confirm, back }) {
   );
 }
 
-function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogout, onDeleteAccount, sub, setSub }) {
+function Settings_({ data, helpers, user, update, updateUser, go, toast, confirm, onLogout, onDeleteAccount, sub, setSub }) {
   const items = [
     { id: "categories", icon: LayoutGrid, label: "Kategorie", desc: "Własne kategorie, ikony i kolory" },
     { id: "recurring", icon: Repeat, label: "Płatności cykliczne", desc: "Wstrzymuj, wznawiaj i usuwaj" },
     { id: "cars", icon: CarFront, label: "Samochody i stacje", desc: "Edytuj i usuwaj pojazdy oraz stacje" },
     { id: "currency", icon: Coins, label: "Waluta i kursy", desc: `Główna: ${data.settings.mainCurrency}` },
     { id: "nav", icon: Menu, label: "Nawigacja", desc: "Układ paska i menu" },
+    { id: "backup", icon: FileText, label: "Kopia zapasowa", desc: "Pobierz dane (JSON, CSV) lub wczytaj kopię" },
     { id: "profile", icon: UserRound, label: "Profil", desc: user.name },
   ];
   const [themeSheet, setThemeSheet] = useState(false);
@@ -3384,6 +3453,7 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
   if (sub === "profile") return <ProfileManager user={user} updateUser={updateUser} toast={toast} confirm={confirm} onLogout={onLogout} onDeleteAccount={onDeleteAccount} back={() => setSub(null)} />;
   if (sub === "nav") return <NavManager data={data} update={update} toast={toast} back={() => setSub(null)} />;
   if (sub === "cars") return <CarsStationsManager data={data} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
+  if (sub === "backup") return <BackupManager data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -3421,6 +3491,138 @@ function Settings_({ data, user, update, updateUser, go, toast, confirm, onLogou
       <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, textAlign: "center" }}>
         Dane przechowywane lokalnie na tym urządzeniu, osobno dla każdego konta. Zalogowano jako {user.login}.
         <br />Sakwa · kompilacja 31 · baza Supabase</p>
+    </div>
+  );
+}
+
+/* ---------------- backup: eksport / import ---------------- */
+
+function downloadBlob(content, filename, mime) {
+  const url = URL.createObjectURL(new Blob([content], { type: mime }));
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+const csvCell = (v) => {
+  const s = String(v ?? "");
+  return /[";\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+};
+
+function transactionsCsv(data, toMain, main) {
+  const catName = (id) => (data.categories.find((c) => c.id === id) || UNCAT).name;
+  const head = ["Data", "Typ", "Nazwa", "Kategoria", "Kwota", "Waluta", `Kwota (${main})`, "Notatka"];
+  const rows = [...data.transactions]
+    .sort((a, b) => a.date.localeCompare(b.date))
+    .map((t) => [
+      t.date,
+      t.type === "income" ? "Przychód" : "Wydatek",
+      t.name,
+      catName(t.categoryId),
+      String(t.amount).replace(".", ","),        // przecinek dziesiętny dla polskiego Excela
+      t.currency,
+      toMain(t.amount, t.currency).toFixed(2).replace(".", ","),
+      t.note || "",
+    ]);
+  /* separator ; + BOM: polski Excel domyślnie tak czyta CSV i nie gubi ogonków */
+  return "﻿" + [head, ...rows].map((r) => r.map(csvCell).join(";")).join("\r\n");
+}
+
+function BackupManager({ data, helpers, update, toast, confirm, back }) {
+  const { toMain, main } = helpers;
+  const fileRef = useRef(null);
+  const [busy, setBusy] = useState(false);
+  const stamp = todayISO();
+
+  const exportJson = () => {
+    downloadBlob(JSON.stringify({ app: "sakwa", version: 1, exportedAt: new Date().toISOString(), data }, null, 2),
+      `sakwa-kopia-${stamp}.json`, "application/json");
+    toast("Kopia zapasowa pobrana");
+  };
+  const exportCsv = () => {
+    if (!data.transactions.length) return toast("Brak transakcji do wyeksportowania");
+    downloadBlob(transactionsCsv(data, toMain, main), `sakwa-transakcje-${stamp}.csv`, "text/csv;charset=utf-8");
+    toast("Transakcje wyeksportowane do CSV");
+  };
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // pozwala wybrać ten sam plik ponownie
+    if (!file) return;
+    setBusy(true);
+    try {
+      const parsed = JSON.parse(await file.text());
+      /* akceptujemy zarówno nasz plik {app,data}, jak i goły dokument danych */
+      const incoming = parsed?.data && typeof parsed.data === "object" ? parsed.data : parsed;
+      if (!incoming || typeof incoming !== "object" || !Array.isArray(incoming.transactions)) {
+        setBusy(false);
+        return toast("To nie wygląda na kopię zapasową Sakwy");
+      }
+      const counts = `${incoming.transactions.length} transakcji, ${(incoming.categories || []).length} kategorii, ${(incoming.refuels || []).length} tankowań`;
+      setBusy(false);
+      confirm(
+        { title: "Wczytać kopię zapasową?", desc: `Plik zawiera ${counts}. Wszystkie obecne dane zostaną nimi ZASTĄPIONE — tej operacji nie da się cofnąć.`, danger: true, confirmLabel: "Zastąp dane" },
+        () => {
+          update((d) => {
+            const base = emptyData();
+            return {
+              ...base,
+              ...incoming,
+              settings: { ...base.settings, ...(incoming.settings || {}), rates: { ...DEFAULT_RATES, ...(incoming.settings?.rates || {}) } },
+              profile: incoming.profile || d.profile, // profil z pliku, a jak go nie ma — obecny
+            };
+          });
+          toast("Dane wczytane z kopii zapasowej");
+        });
+    } catch {
+      setBusy(false);
+      toast("Nie udało się odczytać pliku — czy to na pewno JSON?");
+    }
+  };
+
+  const Row = ({ icon: Icon, title, desc, action }) => (
+    <div className="tx-row" style={{ cursor: "default" }}>
+      <div className="icon-badge" style={{ background: "var(--surface2)", color: "var(--muted)" }}><Icon size={19} /></div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontWeight: 800, fontSize: 14.5 }}>{title}</div>
+        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, lineHeight: 1.45 }}>{desc}</div>
+      </div>
+      {action}
+    </div>
+  );
+
+  return (
+    <div className="fade-in">
+      <SubHead title="Kopia zapasowa" back={back} />
+      <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
+        Kopia to zwykły plik na Twoim urządzeniu — działa niezależnie od bazy danych i konta.
+        Warto ją pobierać co jakiś czas.
+      </p>
+      <div className="card" style={{ padding: 6 }}>
+        <Row icon={FileText} title="Pełna kopia (JSON)"
+          desc="Wszystkie transakcje, kategorie, cele, budżety, auta i tankowania. Tym plikiem przywrócisz dane."
+          action={<button className="btn btn-primary" style={{ padding: "9px 14px" }} onClick={exportJson}>Pobierz</button>} />
+        <Row icon={LayoutGrid} title="Transakcje (CSV)"
+          desc="Arkusz do Excela lub Arkuszy Google. Sam podgląd — nie da się go wczytać z powrotem."
+          action={<button className="btn btn-ghost" style={{ padding: "9px 14px" }} onClick={exportCsv}>Pobierz</button>} />
+      </div>
+
+      <div style={{ height: 14 }} />
+      <div className="card" style={{ padding: 6 }}>
+        <Row icon={RotateCcw} title="Wczytaj kopię (JSON)"
+          desc="Zastąpi obecne dane zawartością pliku. Przed zapisem pokażemy, co zawiera."
+          action={
+            <button className="btn btn-ghost" style={{ padding: "9px 14px" }} disabled={busy} onClick={() => fileRef.current?.click()}>
+              {busy ? "Czytam…" : "Wybierz plik"}
+            </button>
+          } />
+      </div>
+      <input ref={fileRef} type="file" accept="application/json,.json" onChange={onFile} style={{ display: "none" }} />
+
+      <p style={{ color: "var(--muted)", fontSize: 12, fontWeight: 600, marginTop: 14, lineHeight: 1.5 }}>
+        Wskazówka: pobierz kopię przed większymi porządkami — np. przed usuwaniem kategorii albo zmianą waluty głównej.
+      </p>
     </div>
   );
 }
@@ -3801,6 +4003,35 @@ function Auth({ onAuthed, onAwaitingVerify, onAwaitingReset }) {
 }
 
 /* ---------------- recurring generation (idempotent) ---------------- */
+
+/* Najbliższe wystąpienia płatności cyklicznych w oknie `days` dni.
+   Pomijamy pozycje wstrzymane, sprzed daty startu oraz te, dla których
+   transakcja na dany miesiąc już powstała (ten sam schemat id, co w
+   generateRecurringTx) — inaczej „przypomnienie" dotyczyłoby czegoś,
+   co jest już w historii. */
+function upcomingRecurring(data, days = 7) {
+  const now = new Date(); now.setHours(0, 0, 0, 0);
+  const limit = new Date(now); limit.setDate(limit.getDate() + days);
+  const ids = new Set(data.transactions.map((t) => t.id));
+  const out = [];
+  for (const r of data.recurring || []) {
+    if (r.paused) continue;
+    const day = Math.min(r.day, 28);
+    let occur = new Date(now.getFullYear(), now.getMonth(), day);
+    if (occur < now) occur = new Date(now.getFullYear(), now.getMonth() + 1, day);
+    if (occur > limit) continue;
+    const start = new Date(r.startDate + "T00:00:00");
+    if (occur < start) continue;
+    const y = occur.getFullYear(), mm = String(occur.getMonth() + 1).padStart(2, "0");
+    if (ids.has(`rec-${r.id}-${y}-${mm}`)) continue;
+    out.push({
+      ...r,
+      date: `${y}-${mm}-${String(day).padStart(2, "0")}`,
+      daysLeft: Math.round((occur - now) / 864e5),
+    });
+  }
+  return out.sort((a, b) => a.date.localeCompare(b.date));
+}
 
 function generateRecurringTx(data) {
   const now = new Date();
@@ -4276,7 +4507,9 @@ export default function App() {
   const awaitingResetRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [userId, setUserId] = useState(null);
-  const [dbDown, setDbDown] = useState(false);
+  const [dbDown, setDbDown] = useState(false);   // zapis nie przechodzi => tryb offline
+  const [dbFatal, setDbFatal] = useState(false); // odczyt padł => tylko podgląd, wymagane odświeżenie
+  const [localFull, setLocalFull] = useState(false); // nie mieści się kopia offline
   const loadFailedRef = useRef(false); // odczyt padł => nigdy nie zapisuj (patrz loadUserData)
   const [data, setData] = useState(null);
   const [view, setView] = useState("dashboard");
@@ -4620,17 +4853,31 @@ export default function App() {
 
   async function loadUserData(su) {
     let d = null;
+    let restoredOffline = false;
     try {
-      d = await dbLoad(su.id);
+      const { data: remote, updatedAt } = await dbLoad(su.id);
       loadFailedRef.current = false;
+      d = remote;
+      /* Niezsynchronizowane zmiany z poprzedniej sesji na tym urządzeniu.
+         Rozstrzygamy po czasie: lokalna kopia wygrywa tylko wtedy, gdy jest
+         nowsza od wiersza w bazie — inaczej byłaby to stara wersja, która
+         cofnęłaby zmiany zrobione w międzyczasie na innym urządzeniu. */
+      const pending = offlineRead(su.id);
+      if (pending) {
+        const localNewer = !updatedAt || pending.savedAt > updatedAt;
+        if (localNewer) { d = pending.data; restoredOffline = true; }
+        else offlineClear(su.id);
+      }
     } catch (e) {
       console.error("dbLoad", e);
-      /* Nie udało się POBRAĆ danych — w pamięci ląduje pusty dokument. Zapis
-         jest upsertem całości, więc jedno udane przejście skasowałoby realne
-         dane w bazie. Do końca życia tej karty blokujemy więc zapisy; wyjście
-         z tego stanu to przeładowanie strony (o co prosi baner). */
+      /* Nie udało się POBRAĆ danych. Jeśli mamy kopię offline z tego
+         urządzenia — pokazujemy ją (lepsze niż pustka), ale nadal nie wolno
+         nic zapisywać: nie wiemy, co jest w bazie, a zapis nadpisuje całość.
+         Wyjście z tego stanu to przeładowanie strony (o co prosi baner). */
+      const pending = offlineRead(su.id);
+      if (pending) { d = pending.data; restoredOffline = true; }
       loadFailedRef.current = true;
-      setDbDown(true);
+      setDbFatal(true);
     }
     if (!d) d = emptyData();
     d = { ...emptyData(), ...d, settings: { ...emptyData().settings, ...(d.settings || {}), rates: { ...DEFAULT_RATES, ...(d.settings?.rates || {}) } } };
@@ -4668,7 +4915,8 @@ export default function App() {
     const generated = generateRecurringTx(d);
     if (generated.length) d = { ...d, transactions: [...d.transactions, ...generated] };
     setData(d);
-    if (generated.length) setTimeout(() => toast(`Wygenerowano ${generated.length} ${generated.length === 1 ? "płatność cykliczną" : "płatności cyklicznych"}`), 400);
+    if (restoredOffline) setTimeout(() => toast("Przywrócono zmiany zapisane offline na tym urządzeniu"), 400);
+    else if (generated.length) setTimeout(() => toast(`Wygenerowano ${generated.length} ${generated.length === 1 ? "płatność cykliczną" : "płatności cyklicznych"}`), 400);
   }
 
   /* persist data (debounced) */
@@ -4678,36 +4926,52 @@ export default function App() {
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       dbSave(userId, data)
-        .then(() => setDbDown(false))
-        .catch((e) => { console.error("dbSave", e); setDbDown(true); });
+        .then(() => { offlineClear(userId); setDbDown(false); })
+        .catch((e) => {
+          console.error("dbSave", e);
+          /* baza nieosiągalna => stan ląduje na urządzeniu i poczeka na sieć */
+          if (!offlineWrite(userId, data)) setLocalFull(true);
+          setDbDown(true);
+        });
     }, 600);
     return () => clearTimeout(saveTimer.current);
   }, [data, userId]);
 
-  /* baza padła => co 12 s próbujemy zapisać ponownie. Zapis jest upsertem
-     całego dokumentu, więc jedno udane przejście odtwarza pełny stan i sam
-     zdejmuje baner — użytkownik nie musi nic klikać. */
+  /* offline => próbujemy wypchnąć stan co 12 s oraz natychmiast, gdy system
+     zgłosi powrót sieci. Upsert wysyła cały dokument, więc jedno udane
+     przejście synchronizuje wszystko i samo zdejmuje baner. */
   useEffect(() => {
     if (!dbDown || !data || !userId || loadFailedRef.current) return;
-    const iv = setInterval(() => {
+    let done = false;
+    const flush = () => {
+      if (done) return;
       dbSave(userId, data)
-        .then(() => { setDbDown(false); toast("Połączenie z bazą przywrócone — zmiany zapisane"); })
+        .then(() => {
+          done = true;
+          offlineClear(userId); setDbDown(false); setLocalFull(false);
+          toast("Połączenie przywrócone — zmiany zsynchronizowane");
+        })
         .catch(() => {});
-    }, 12000);
-    return () => clearInterval(iv);
+    };
+    const iv = setInterval(flush, 12000);
+    window.addEventListener("online", flush);
+    return () => { clearInterval(iv); window.removeEventListener("online", flush); };
   }, [dbDown, data, userId]); // eslint-disable-line
 
   const update = useCallback((fn) => setData((d) => fn(d)), []);
 
-  /* Gdy baza jest niedostępna, blokujemy DODAWANIE — nowy wpis istniałby tylko
-     w pamięci karty i zniknąłby po odświeżeniu (a odświeżenie zalecamy w banerze).
-     Edycja i usuwanie zostają dostępne: to zmiany na danych, które i tak są już
-     w bazie, a każdy udany zapis wysyła cały dokument, więc dogonią bazę same. */
+  /* Sam brak połączenia NIE blokuje już dodawania — zmiany lądują na urządzeniu
+     (offlineWrite) i synchronizują się same. Blokujemy tylko dwa przypadki,
+     w których nowy wpis naprawdę przepadnie:
+     - dbFatal: nie udało się WCZYTAĆ danych, więc w pamięci jest pusty dokument
+       i zapis skasowałby zawartość bazy (patrz loadUserData),
+     - localFull: nie udało się nawet zapisać kopii na urządzeniu. */
   const addBlocked = useCallback(() => {
-    if (!dbDown) return false;
-    toast("Baza danych niedostępna — odśwież stronę, aby dodawać wpisy");
-    return true;
-  }, [dbDown]); // eslint-disable-line
+    if (dbFatal) { toast("Nie wczytano danych — odśwież stronę, zanim coś dodasz"); return true; }
+    if (localFull) { toast("Brak miejsca na dane offline — odśwież stronę"); return true; }
+    return false;
+  }, [dbFatal, localFull]); // eslint-disable-line
+  const addDisabled = dbFatal || localFull;
 
   /* theme is the only thing kept on-device */
   useEffect(() => {
@@ -4771,10 +5035,11 @@ export default function App() {
       main,
       toMain,
       isOverBudget: (t) => t.type === "expense" && over.has(`${t.categoryId}|${ym(t.date)}`),
-      /* podsekcje pytają o to przed otwarciem formularza dodawania */
-      dbDown, addBlocked,
+      /* podsekcje pytają o to przed otwarciem formularza dodawania.
+         addDisabled dotyczy TYLKO stanów krytycznych — sam offline nie blokuje */
+      addDisabled: dbFatal || localFull, addBlocked,
     };
-  }, [data, dbDown, addBlocked]);
+  }, [data, dbFatal, localFull, addBlocked]);
 
   /* transactions ops */
   const saveTx = (tx, recurringCfg, opts) => {
@@ -4904,7 +5169,7 @@ export default function App() {
       case "budgets": return <Budgets data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "summary": return <Summary data={data} helpers={helpers} />;
       case "more": return <More go={go} data={data} />;
-      case "settings": return <Settings_ data={data} user={user} update={update} updateUser={updateUser} go={go} toast={toast} confirm={confirm} onLogout={logout} onDeleteAccount={deleteAccount} sub={settingsSub} setSub={setSettingsSub} />;
+      case "settings": return <Settings_ data={data} helpers={helpers} user={user} update={update} updateUser={updateUser} go={go} toast={toast} confirm={confirm} onLogout={logout} onDeleteAccount={deleteAccount} sub={settingsSub} setSub={setSettingsSub} />;
       default: return null;
     }
   })();
@@ -4970,7 +5235,7 @@ export default function App() {
               <div className="appbar-month">{periodMonthLabel}</div>
               <div style={{ flex: 1, minWidth: 12 }} />
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button className="btn btn-primary" disabled={dbDown} onClick={() => { if (!addBlocked()) setTxForm({}); }}><Plus size={16} /> Nowa transakcja</button>
+                <button className="btn btn-primary" disabled={addDisabled} onClick={() => { if (!addBlocked()) setTxForm({}); }}><Plus size={16} /> Nowa transakcja</button>
                 <button className="top-ic" style={{ width: 46, height: 46, borderRadius: 14 }} aria-label="Ustawienia" onClick={() => go("settings")}><SettingsIcon size={20} /></button>
                 <button className="user-chip" onClick={openProfile}>
                   <span className="appbar-avatar" style={{ background: user?.avatarColor, width: 40, height: 40, fontSize: 15, borderRadius: 13 }}>{(user?.name || "?").charAt(0).toUpperCase()}</span>
@@ -5012,21 +5277,33 @@ export default function App() {
               </div>
             </div>
           )}
-          {dbDown && (
+          {(dbFatal || localFull) ? (
             <div className="db-banner no-print" role="alert">
               <span className="db-ic"><AlertTriangle size={20} /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div className="db-t">Błąd bazy danych</div>
                 <div className="db-d">
-                  Brak połączenia z bazą — dodawanie nowych wpisów jest zablokowane, bo nie zostałyby zapisane.
-                  Odśwież stronę, a jeśli problem nie ustąpi, spróbuj ponownie za chwilę.
+                  {localFull
+                    ? "Nie udało się zapisać kopii na urządzeniu (brak miejsca). Dodawanie jest zablokowane — odśwież stronę."
+                    : "Nie udało się wczytać Twoich danych, więc zapisywanie jest wyłączone, żeby niczego nie nadpisać. Odśwież stronę, a jeśli problem nie ustąpi, spróbuj ponownie za chwilę."}
                 </div>
               </div>
               <button className="btn btn-primary" onClick={() => window.location.reload()}>
                 <RefreshCw size={15} /> Odśwież
               </button>
             </div>
-          )}
+          ) : dbDown ? (
+            <div className="db-banner db-banner-offline no-print" role="status">
+              <span className="db-ic"><RefreshCw size={20} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="db-t">Tryb offline</div>
+                <div className="db-d">
+                  Brak połączenia z bazą — pracujesz normalnie, a zmiany są zapisywane na tym urządzeniu
+                  i wyślą się same, gdy połączenie wróci.
+                </div>
+              </div>
+            </div>
+          ) : null}
           {content}
         </main>
       </div>
@@ -5040,7 +5317,7 @@ export default function App() {
               <div className="icon-badge" style={{ width: 44, height: 44, borderRadius: 14, background: "var(--grad-accent)", color: "var(--on-accent)", flexShrink: 0 }}><Wallet size={22} /></div>
               <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em", fontFamily: "'Space Grotesk', sans-serif" }}>Sakwa</div>
             </div>
-            <button className="btn btn-primary" style={{ margin: "0 14px 14px" }} disabled={dbDown}
+            <button className="btn btn-primary" style={{ margin: "0 14px 14px" }} disabled={addDisabled}
               onClick={() => { setDrawer(false); if (!addBlocked()) setTxForm({}); }}>
               <Plus size={16} /> Nowa transakcja
             </button>
@@ -5065,8 +5342,8 @@ export default function App() {
               <ChevronRight size={17} style={{ color: "var(--muted)", marginLeft: "auto", flexShrink: 0 }} />
             </button>
           </aside>
-          <button className="fab no-print" aria-label="Dodaj transakcję" disabled={dbDown}
-            style={dbDown ? { opacity: .45, cursor: "not-allowed" } : undefined}
+          <button className="fab no-print" aria-label="Dodaj transakcję" disabled={addDisabled}
+            style={addDisabled ? { opacity: .45, cursor: "not-allowed" } : undefined}
             onClick={() => { if (!addBlocked()) setTxForm({}); }}>
             <span className="fab-bg" aria-hidden="true" />
             <Plus size={24} strokeWidth={2.5} />
