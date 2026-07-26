@@ -1839,12 +1839,91 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
 
 /* ---------------- insights & AI analysis ---------------- */
 
-/* Zapytanie do api.anthropic.com leci wprost z przeglądarki, bez klucza —
-   działa tylko wtedy, gdy aplikacja jest hostowana przez Claude.ai (tam żądanie
-   idzie przez proxy z autoryzacją). Na Vercelu blokuje je CORS i brak klucza,
-   więc przycisk zawsze kończył się błędem. Klucza NIE wolno tu wstawić — kod
-   front-endu jest jawny. Docelowo: funkcja serwerowa trzymająca klucz. */
-const AI_AVAILABLE = typeof window !== "undefined" && /(^|\.)claude\.ai$/i.test(window.location.hostname);
+/* ---------------- AI: własny klucz użytkownika ----------------
+   Klucz trzymamy WYŁĄCZNIE w localStorage tego urządzenia — nie w dokumencie
+   danych, więc nie trafia do Supabase ani do pobieranej kopii zapasowej
+   (inaczej wyeksportowany plik zawierałby sekret). Konsekwencja: trzeba go
+   wpisać na każdym urządzeniu osobno.
+   Uwaga bezpieczeństwa dla użytkownika (mówi o tym też ekran ustawień):
+   zapytanie leci prosto z przeglądarki, więc klucz jest widoczny w narzędziach
+   deweloperskich i w ruchu sieciowym. Warto użyć klucza z limitem wydatków. */
+const AI_LS_KEY = "sakwa-ai";
+const AI_PROVIDERS = {
+  anthropic: {
+    label: "Claude (Anthropic)",
+    defaultModel: "claude-opus-5",
+    keyHint: "sk-ant-…",
+    keysUrl: "https://console.anthropic.com/settings/keys",
+    note: "Płatne wg zużycia. Jedna analiza to ułamek grosza — pojedyncze zapytanie i krótka odpowiedź.",
+  },
+  gemini: {
+    label: "Google Gemini",
+    defaultModel: "gemini-2.5-flash",
+    keyHint: "AIza…",
+    keysUrl: "https://aistudio.google.com/apikey",
+    note: "Ma darmowy pakiet dzienny — do tych analiz zwykle w zupełności wystarcza.",
+  },
+};
+const loadAiCfg = () => {
+  try { return JSON.parse(localStorage.getItem(AI_LS_KEY)) || {}; } catch { return {}; }
+};
+const saveAiCfg = (cfg) => {
+  try { localStorage.setItem(AI_LS_KEY, JSON.stringify(cfg)); } catch {}
+};
+const aiReady = (cfg) => !!(cfg && cfg.key && AI_PROVIDERS[cfg.provider]);
+
+/* Jedno wejście dla obu dostawców — zwraca gotowy tekst albo rzuca błędem. */
+async function askAi(cfg, prompt, maxTokens = 4000) {
+  const model = cfg.model || AI_PROVIDERS[cfg.provider].defaultModel;
+  if (cfg.provider === "gemini") {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-goog-api-key": cfg.key },
+        body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] }),
+      });
+    if (!res.ok) {
+      /* Gemini opisuje przyczynę w ciele odpowiedzi (np. „API key not valid”),
+         a błędny klucz zwraca 400 — bez tego komunikat byłby bezużyteczny. */
+      let why = "";
+      try { why = (await res.json())?.error?.message || ""; } catch {}
+      throw new Error(`HTTP ${res.status}${why ? ` — ${why}` : ""}`);
+    }
+    const out = await res.json();
+    const text = (out.candidates?.[0]?.content?.parts || []).map((p) => p.text).filter(Boolean).join("\n").trim();
+    if (!text) throw new Error("empty");
+    return text;
+  }
+  /* SDK ładujemy dynamicznie — bez tego ~200 kB doklejałoby się do pierwszego
+     wejścia na stronę, choć większość użytkowników AI nie włączy. */
+  const { default: Anthropic } = await import("@anthropic-ai/sdk");
+  const client = new Anthropic({ apiKey: cfg.key, dangerouslyAllowBrowser: true });
+  /* max_tokens obejmuje myślenie ORAZ odpowiedź (na Opus 5 myślenie jest
+     domyślnie włączone), więc zostawiamy zapas — przy ciasnym limicie
+     odpowiedź potrafi urwać się w połowie. */
+  const msg = await client.messages.create({
+    model, max_tokens: maxTokens,
+    messages: [{ role: "user", content: prompt }],
+  });
+  const text = (msg.content || []).filter((b) => b.type === "text").map((b) => b.text).join("\n").trim();
+  if (!text) throw new Error("empty");
+  return text;
+}
+
+/* Komunikat po polsku zamiast surowego HTTP — najczęstsze przyczyny wprost. */
+function aiErrorPl(e) {
+  const m = String(e?.message || e);
+  /* Gemini odrzuca zły klucz kodem 400 z opisem w treści, Anthropic 401 */
+  if (/api[_ -]?key|unauthor|invalid.*credential/i.test(m)) return "Klucz API został odrzucony. Sprawdź go w Ustawienia → Analiza AI.";
+  if (/401|403/.test(m)) return "Klucz API został odrzucony. Sprawdź go w Ustawienia → Analiza AI.";
+  if (/429/.test(m)) return "Dostawca AI zgłosił przekroczony limit zapytań. Spróbuj za chwilę.";
+  if (/404/.test(m)) return "Nie znaleziono modelu — popraw jego nazwę w Ustawienia → Analiza AI.";
+  if (/empty/.test(m)) return "Model nie zwrócił treści. Spróbuj ponownie.";
+  if (/fetch|network|Failed/i.test(m)) return "Brak połączenia z dostawcą AI (lub blokada CORS). Sprawdź internet.";
+  return "Nie udało się wykonać analizy: " + m;
+}
+
 const AI_COOLDOWN = 10 * 60 * 1000; // 10 min
 const aiCooldownLeft = (data) => Math.max(0, AI_COOLDOWN - (Date.now() - (data.settings.aiLastAt || 0)));
 
@@ -1893,11 +1972,12 @@ function buildInsights(txs, allTx, categories, toMain, main) {
   return out.slice(0, 5);
 }
 
-function AiAnalysisCard({ data, txs, helpers, rangeLabel, update }) {
+function AiAnalysisCard({ data, txs, helpers, rangeLabel, update, go }) {
   const { toMain, main } = helpers;
   const [aiText, setAiText] = useState(null);
   const [aiErr, setAiErr] = useState(null);
   const [loading, setLoading] = useState(false);
+  const aiCfg = loadAiCfg();
   const insights = useMemo(() => buildInsights(txs, data.transactions, data.categories, toMain, main), [txs, data, toMain, main]);
   const toneColor = { pos: "var(--accent)", neg: "var(--neg)", warn: "var(--warn)", info: "var(--info)", muted: "var(--muted)" };
 
@@ -1922,19 +2002,10 @@ function AiAnalysisCard({ data, txs, helpers, rangeLabel, update }) {
         .map(([n, v]) => `${n}: ${v.toFixed(0)} ${main}`).join(", ");
       const goals = data.goals.map((g) => `${g.name}: ${Math.round((g.saved / g.target) * 100)}%`).join(", ") || "brak";
       const prompt = `Jesteś doradcą finansów osobistych. Dane użytkownika za okres "${rangeLabel}" (waluta ${main}): przychody ${inc.toFixed(0)}, wydatki ${exp.toFixed(0)}, bilans ${(inc - exp).toFixed(0)}, liczba transakcji ${txs.length}. Wydatki wg kategorii: ${cats || "brak"}. Postęp celów oszczędnościowych: ${goals}. Napisz po polsku zwięzłą analizę (maks. 130 słów): 1) krótka ocena sytuacji, 2) dwa najważniejsze wnioski, 3) dwie konkretne rady. Zwykły tekst, bez markdown i bez nagłówków.`;
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 1000, messages: [{ role: "user", content: prompt }] }),
-      });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const out = await res.json();
-      const text = (out.content || []).map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n").trim();
-      if (!text) throw new Error("empty");
-      setAiText(text);
-    } catch {
+      setAiText(await askAi(aiCfg, prompt));
+    } catch (e) {
       update((d) => ({ ...d, settings: { ...d.settings, aiLastAt: prevStamp } })); // refund limit on failure
-      setAiErr("Analiza AI jest dostępna, gdy aplikacja działa w Claude.ai. Lokalnie korzystaj z automatycznych wniosków powyżej — liczą się w pełni offline i za darmo.");
+      setAiErr(aiErrorPl(e));
     } finally { setLoading(false); }
   };
 
@@ -1959,9 +2030,13 @@ function AiAnalysisCard({ data, txs, helpers, rangeLabel, update }) {
         </div>
       )}
       {aiErr && <div style={{ color: "var(--muted)", fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, marginBottom: 12 }}>{aiErr}</div>}
-      {AI_AVAILABLE && (
+      {aiReady(aiCfg) ? (
         <button className="btn btn-ghost" style={{ width: "100%" }} disabled={loading} onClick={askAI}>
           <Sparkles size={15} style={{ color: "var(--violet)" }} /> {loading ? "Analizuję…" : aiText ? "Analizuj ponownie (AI)" : "Poproś AI o analizę"}
+        </button>
+      ) : (
+        <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => go?.("settings")}>
+          <Sparkles size={15} style={{ color: "var(--violet)" }} /> Włącz analizę AI (własny klucz)
         </button>
       )}
     </div>
@@ -2137,8 +2212,8 @@ function Stats({ data, helpers, go, update, toast }) {
               ? <Donut slices={slices} valueMode={catMode} main={main} centerLabel="Razem" centerValue={fmtMoney(exp, main, true)} />
               : <div className="skeleton" style={{ height: 150 }} />}
           </div>
-          <AiAnalysisCard data={data} txs={txs} helpers={helpers} update={update} rangeLabel={PRESETS.find((p) => p.id === preset)?.label || "własny zakres"} />
-          <ReportGenerator data={data} helpers={helpers} update={update} toast={toast} presetRange={null} />
+          <AiAnalysisCard data={data} txs={txs} helpers={helpers} update={update} go={go} rangeLabel={PRESETS.find((p) => p.id === preset)?.label || "własny zakres"} />
+          <ReportGenerator data={data} helpers={helpers} update={update} toast={toast} go={go} presetRange={null} />
           {data.goals.length > 0 && (
             <div className="card" style={{ padding: 18 }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
@@ -2285,7 +2360,8 @@ function openSnapshotWindow(snap) {
   return true;
 }
 
-function ReportGenerator({ data, helpers, presetRange, update, toast }) {
+function ReportGenerator({ data, helpers, presetRange, update, toast, go }) {
+  const aiCfg = loadAiCfg();
   const incognito = !!data.settings.hideBalance;
   const { toMain, main } = helpers;
   const [from, setFrom] = useState(presetRange?.from && presetRange.from !== "1970-01-01" ? presetRange.from : `${todayISO().slice(0, 7)}-01`);
@@ -2315,19 +2391,12 @@ function ReportGenerator({ data, helpers, presetRange, update, toast }) {
     try {
       const cats = rep.slices.slice(0, 6).map((s) => `${s.name}: ${s.value.toFixed(0)} ${main}`).join(", ");
       const prompt = `Jesteś doradcą finansów osobistych. Raport za okres ${rep.from} – ${rep.to} (waluta ${main}): przychody ${rep.inc.toFixed(0)}, wydatki ${rep.exp.toFixed(0)}, bilans ${(rep.inc - rep.exp).toFixed(0)}, ${rep.txs.length} transakcji. Wydatki wg kategorii: ${cats || "brak"}. Napisz po polsku krótki wniosek do raportu (maks. 100 słów): ocena okresu, najważniejsza obserwacja i jedna konkretna rada. Zwykły tekst, bez markdown.`;
-      const res = await fetch("https://api.anthropic.com/v1/messages", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model: "claude-sonnet-4-6", max_tokens: 800, messages: [{ role: "user", content: prompt }] }),
-      });
-      if (!res.ok) throw new Error("HTTP " + res.status);
-      const out = await res.json();
-      const text = (out.content || []).map((b) => (b.type === "text" ? b.text : "")).filter(Boolean).join("\n").trim();
-      if (!text) throw new Error("empty");
+      const text = await askAi(aiCfg, prompt);
       setAiNote(text); setAiStatus("done");
       update((d) => ({ ...d, reports: (d.reports || []).map((r) => (r.id === rep.id ? { ...r, aiNote: text } : r)) }));
-    } catch {
+    } catch (e) {
       update((d) => ({ ...d, settings: { ...d.settings, aiLastAt: prevStamp } })); // refund limit on failure
+      setAiMsg(aiErrorPl(e));
       setAiStatus("error");
     }
   };
@@ -2395,11 +2464,15 @@ function ReportGenerator({ data, helpers, presetRange, update, toast }) {
           ))}
         </div>
         {cfgErrs.cats && <div className="err-msg" style={{ marginTop: -8, marginBottom: 12 }}>{cfgErrs.cats}</div>}
-        {AI_AVAILABLE && (
+        {aiReady(aiCfg) ? (
           <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 700, fontSize: 13.5, marginBottom: 14, padding: "12px 14px", background: "var(--surface2)", borderRadius: 14 }}>
             <input type="checkbox" checked={includeAi} onChange={(e) => setIncludeAi(e.target.checked)} style={{ width: 17, height: 17, accentColor: "var(--accent)" }} />
             <Sparkles size={15} style={{ color: "var(--violet)" }} /> Dołącz wniosek AI do raportu
           </label>
+        ) : (
+          <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 14, fontSize: 13 }} onClick={() => go?.("settings")}>
+            <Sparkles size={15} style={{ color: "var(--violet)" }} /> Wniosek AI — wymaga własnego klucza
+          </button>
         )}
         <button className="btn btn-primary" style={{ width: "100%" }} disabled={aiStatus === "loading"} onClick={generate}><FileText size={16} /> {aiStatus === "loading" ? "Generuję wniosek AI…" : "Generuj raport"}</button>
       </div>
@@ -3439,6 +3512,7 @@ function Settings_({ data, helpers, user, update, updateUser, go, toast, confirm
     { id: "currency", icon: Coins, label: "Waluta i kursy", desc: `Główna: ${data.settings.mainCurrency}` },
     { id: "nav", icon: Menu, label: "Nawigacja", desc: "Układ paska i menu" },
     { id: "backup", icon: FileText, label: "Kopia zapasowa", desc: "Pobierz dane (JSON, CSV) lub wczytaj kopię" },
+    { id: "ai", icon: Sparkles, label: "Analiza AI", desc: aiReady(loadAiCfg()) ? `Włączona · ${AI_PROVIDERS[loadAiCfg().provider]?.label}` : "Wyłączona — dodaj własny klucz" },
     { id: "profile", icon: UserRound, label: "Profil", desc: user.name },
   ];
   const [themeSheet, setThemeSheet] = useState(false);
@@ -3450,6 +3524,7 @@ function Settings_({ data, helpers, user, update, updateUser, go, toast, confirm
   if (sub === "nav") return <NavManager data={data} update={update} toast={toast} back={() => setSub(null)} />;
   if (sub === "cars") return <CarsStationsManager data={data} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
   if (sub === "backup") return <BackupManager data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
+  if (sub === "ai") return <AiSettings toast={toast} back={() => setSub(null)} />;
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -3595,6 +3670,109 @@ function sanitizeImported(inc) {
       ...(typeof inc.settings?.incognitoPinHash === "string" ? { incognitoPinHash: inc.settings.incognitoPinHash.slice(0, 128) } : {}),
     },
   };
+}
+
+function AiSettings({ toast, back }) {
+  const saved = loadAiCfg();
+  const [provider, setProvider] = useState(saved.provider || "gemini");
+  const [key, setKey] = useState(saved.key || "");
+  const [model, setModel] = useState(saved.model || "");
+  const [show, setShow] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [result, setResult] = useState(null); // {ok, msg}
+  const meta = AI_PROVIDERS[provider];
+
+  const cfgNow = () => ({ provider, key: key.trim(), model: model.trim() || meta.defaultModel });
+
+  const save = () => {
+    if (!key.trim()) return setResult({ ok: false, msg: "Najpierw wklej klucz API." });
+    saveAiCfg(cfgNow()); setResult({ ok: true, msg: "Zapisano na tym urządzeniu." });
+    toast("Analiza AI włączona");
+  };
+  const test = async () => {
+    if (!key.trim()) return setResult({ ok: false, msg: "Najpierw wklej klucz API." });
+    setTesting(true); setResult(null);
+    try {
+      const txt = await askAi(cfgNow(), "Odpowiedz jednym słowem: OK", 200);
+      setResult({ ok: true, msg: `Połączenie działa. Model odpowiedział: „${txt.slice(0, 40)}”.` });
+    } catch (e) {
+      setResult({ ok: false, msg: aiErrorPl(e) });
+    } finally { setTesting(false); }
+  };
+  const clear = () => {
+    saveAiCfg({}); setKey(""); setModel(""); setResult({ ok: true, msg: "Klucz usunięty z tego urządzenia." });
+    toast("Klucz AI usunięty");
+  };
+
+  return (
+    <div className="fade-in">
+      <SubHead title="Analiza AI" back={back} />
+      <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.55, marginBottom: 14 }}>
+        Sakwa nie ma własnego serwera AI — analizy działają na <b style={{ color: "var(--text)" }}>Twoim kluczu</b> u wybranego
+        dostawcy. Automatyczne wnioski w Analizach i Raportach liczą się bez tego, offline i za darmo.
+      </p>
+
+      <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+        <Field label="Dostawca">
+          <select className="select" value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); setResult(null); }}>
+            {Object.entries(AI_PROVIDERS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+          </select>
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6, lineHeight: 1.5 }}>{meta.note}</div>
+        </Field>
+
+        <Field label="Klucz API">
+          <div style={{ position: "relative" }}>
+            <input className="input" type={show ? "text" : "password"} value={key} placeholder={meta.keyHint}
+              autoComplete="off" spellCheck={false} onChange={(e) => { setKey(e.target.value); setResult(null); }}
+              style={{ paddingRight: 46 }} />
+            <button className="pass-eye" type="button" aria-label={show ? "Ukryj klucz" : "Pokaż klucz"} onClick={() => setShow((s) => !s)}>
+              {show ? <EyeOff size={17} /> : <Eye size={17} />}
+            </button>
+          </div>
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
+            Klucz wygenerujesz na <b style={{ color: "var(--text)" }}>{meta.keysUrl.replace("https://", "")}</b>
+          </div>
+        </Field>
+
+        <Field label="Model">
+          <input className="input" value={model} placeholder={meta.defaultModel} autoComplete="off" spellCheck={false}
+            onChange={(e) => { setModel(e.target.value); setResult(null); }} />
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
+            Puste = {meta.defaultModel}. Zmień, jeśli chcesz tańszy lub nowszy model.
+          </div>
+        </Field>
+
+        {result && (
+          <div style={{ padding: "10px 12px", borderRadius: 12, marginBottom: 12, fontSize: 12.5, fontWeight: 700, lineHeight: 1.5,
+            background: result.ok ? "var(--accent-dim)" : "var(--neg-dim)", color: result.ok ? "var(--accent)" : "var(--neg)" }}>
+            {result.msg}
+          </div>
+        )}
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <button className="btn btn-ghost" style={{ flex: 1 }} disabled={testing} onClick={test}>
+            {testing ? "Sprawdzam…" : "Testuj połączenie"}
+          </button>
+          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save}>Zapisz</button>
+        </div>
+        {aiReady(saved) && (
+          <button className="btn btn-danger" style={{ width: "100%", marginTop: 10 }} onClick={clear}>
+            <Trash2 size={15} /> Usuń klucz z tego urządzenia
+          </button>
+        )}
+      </div>
+
+      {/* uczciwie o ryzyku — klucz żyje w przeglądarce, nie na serwerze */}
+      <div className="card" style={{ padding: 14, display: "flex", gap: 11, alignItems: "flex-start" }}>
+        <AlertTriangle size={18} style={{ color: "var(--warn)", flexShrink: 0, marginTop: 2 }} />
+        <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.55 }}>
+          Klucz zapisuje się <b style={{ color: "var(--text)" }}>tylko w tej przeglądarce</b> — nie trafia do bazy ani do kopii
+          zapasowej, więc na innym urządzeniu trzeba go wpisać ponownie. Zapytania idą prosto z przeglądarki, więc klucz jest
+          widoczny w narzędziach deweloperskich — użyj klucza z limitem wydatków i nie korzystaj z tej funkcji na cudzym sprzęcie.
+          Do dostawcy wysyłamy tylko zbiorcze kwoty i nazwy kategorii, nigdy listy transakcji.
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function BackupManager({ data, helpers, update, toast, confirm, back }) {
@@ -5313,7 +5491,10 @@ export default function App() {
               ) : (
                 <div className="appbar-greet" />
               )}
-              <div className="appbar-month">{periodMonthLabel}</div>
+              {/* pigułka z miesiącem jest pozycjonowana absolutnie na środku paska
+                  i na wąskim ekranie nachodziła na przycisk „wróć” podstrony ustawień;
+                  na podstronie ustawień miesiąc i tak nic nie znaczy */}
+              {!(view === "settings" && settingsSub) && <div className="appbar-month">{periodMonthLabel}</div>}
               <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", gap: 10 }}>
                 <button className="top-ic" aria-label="Ustawienia" onClick={() => go("settings")}>
                   <SettingsIcon size={19} />
