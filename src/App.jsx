@@ -376,6 +376,23 @@ input[type="date"] { cursor: pointer; }
 input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 .amt-pill { display: inline-block; padding: 5px 11px; border-radius: 11px; font-weight: 800; font-size: 13.5px; letter-spacing: -0.01em; white-space: nowrap; }
 .skeleton { background: var(--surface2); border-radius: 14px; animation: pulse 1.1s ease-in-out infinite; }
+/* --- ładowanie analizy AI: przesuwający się połysk + pulsujące kropki --- */
+.ai-load { border-radius: 14px; background: var(--surface2); padding: 14px; margin-bottom: 12px; }
+.ai-load-bar {
+  height: 10px; border-radius: 999px; margin-bottom: 9px;
+  background: linear-gradient(90deg, var(--surface3) 25%, color-mix(in srgb, var(--accent) 26%, var(--surface3)) 50%, var(--surface3) 75%);
+  background-size: 220% 100%; animation: aiShimmer 1.3s linear infinite;
+}
+.ai-load-bar:last-child { margin-bottom: 0; }
+@keyframes aiShimmer { from { background-position: 120% 0; } to { background-position: -120% 0; } }
+.ai-dots { display: inline-flex; gap: 4px; margin-left: 2px; vertical-align: middle; }
+.ai-dots i { width: 4px; height: 4px; border-radius: 50%; background: currentColor; animation: aiDot .9s ease-in-out infinite; }
+.ai-dots i:nth-child(2) { animation-delay: .15s; }
+.ai-dots i:nth-child(3) { animation-delay: .3s; }
+@keyframes aiDot { 0%, 60%, 100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) {
+  .ai-load-bar, .ai-dots i { animation: none; }
+}
 @keyframes pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 .sens { transition: filter .3s ease; }
 .incognito .sens { filter: blur(9px); pointer-events: none; user-select: none; }
@@ -1847,7 +1864,44 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
    Uwaga bezpieczeństwa dla użytkownika (mówi o tym też ekran ustawień):
    zapytanie leci prosto z przeglądarki, więc klucz jest widoczny w narzędziach
    deweloperskich i w ruchu sieciowym. Warto użyć klucza z limitem wydatków. */
-const AI_LS_KEY = "sakwa-ai";
+const AI_LS_KEY = "sakwa-ai"; // stara lokalizacja (jawny klucz) — tylko do migracji
+
+/* --- szyfrowanie klucza AI ---------------------------------------------
+   Klucz API leży w bazie (synchronizuje się między urządzeniami), ale WYŁĄCZNIE
+   jako szyfrogram AES-GCM. Klucz szyfrujący wyprowadzamy z hasła użytkownika
+   przez PBKDF2 — aplikacja nigdy go nie przechowuje, więc nie potrafi
+   odszyfrować danych sama z siebie: bez hasła szyfrogram jest bezużyteczny
+   także dla kogoś, kto ma wgląd w bazę.
+   Uwaga: prawdziwy HASH (jednokierunkowy) nie wchodzi w grę — klucz musi dać
+   się odzyskać, żeby wysłać zapytanie do dostawcy AI. */
+const b64 = (buf) => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = (s) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
+
+async function aiDeriveKey(pass, salt) {
+  const base = await crypto.subtle.importKey("raw", new TextEncoder().encode(pass), "PBKDF2", false, ["deriveKey"]);
+  return crypto.subtle.deriveKey(
+    { name: "PBKDF2", salt, iterations: 210000, hash: "SHA-256" },
+    base, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+}
+async function aiEncrypt(plain, pass) {
+  const salt = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const key = await aiDeriveKey(pass, salt);
+  const ct = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(plain));
+  return { v: 1, salt: b64(salt), iv: b64(iv), ct: b64(ct) };
+}
+async function aiDecrypt(blob, pass) {
+  const key = await aiDeriveKey(pass, unb64(blob.salt));
+  /* złe hasło => AES-GCM nie zweryfikuje tagu i rzuci — to jest nasza kontrola */
+  const out = await crypto.subtle.decrypt({ name: "AES-GCM", iv: unb64(blob.iv) }, key, unb64(blob.ct));
+  return new TextDecoder().decode(out);
+}
+
+/* Odszyfrowany klucz żyje tylko w pamięci karty — nie w localStorage i nie
+   w stanie aplikacji, więc nie trafi ani do bazy, ani do kopii zapasowej. */
+let aiSession = null;
+const aiUnlockedCfg = () => aiSession;
+const aiLocked = (data) => !!data?.settings?.ai?.ct && !aiSession;
 const AI_PROVIDERS = {
   anthropic: {
     label: "Claude (Anthropic)",
@@ -1864,13 +1918,13 @@ const AI_PROVIDERS = {
     note: "Ma darmowy pakiet dzienny — do tych analiz zwykle w zupełności wystarcza.",
   },
 };
-const loadAiCfg = () => {
-  try { return JSON.parse(localStorage.getItem(AI_LS_KEY)) || {}; } catch { return {}; }
-};
-const saveAiCfg = (cfg) => {
-  try { localStorage.setItem(AI_LS_KEY, JSON.stringify(cfg)); } catch {}
-};
 const aiReady = (cfg) => !!(cfg && cfg.key && AI_PROVIDERS[cfg.provider]);
+/* pozostałość po wersji z jawnym kluczem w localStorage — czytamy raz, żeby
+   zaproponować przeniesienie do zaszyfrowanej postaci, potem kasujemy */
+const legacyAiKey = () => {
+  try { return (JSON.parse(localStorage.getItem(AI_LS_KEY)) || {}).key || ""; } catch { return ""; }
+};
+const dropLegacyAiKey = () => { try { localStorage.removeItem(AI_LS_KEY); } catch {} };
 
 /* Jedno wejście dla obu dostawców — zwraca gotowy tekst albo rzuca błędem. */
 async function askAi(cfg, prompt, maxTokens = 4000) {
@@ -1977,7 +2031,7 @@ function AiAnalysisCard({ data, txs, helpers, rangeLabel, update, go }) {
   const [aiText, setAiText] = useState(null);
   const [aiErr, setAiErr] = useState(null);
   const [loading, setLoading] = useState(false);
-  const aiCfg = loadAiCfg();
+  const aiCfg = aiUnlockedCfg();
   const insights = useMemo(() => buildInsights(txs, data.transactions, data.categories, toMain, main), [txs, data, toMain, main]);
   const toneColor = { pos: "var(--accent)", neg: "var(--neg)", warn: "var(--warn)", info: "var(--info)", muted: "var(--muted)" };
 
@@ -2024,7 +2078,20 @@ function AiAnalysisCard({ data, txs, helpers, rangeLabel, update, go }) {
           </div>
         ))}
       </div>
-      {aiText && (
+      {/* w trakcie generowania: zarys akapitów zamiast pustki — widać, że coś się dzieje */}
+      {loading && (
+        <div className="ai-load" aria-live="polite" aria-label="Trwa generowanie analizy">
+          <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--violet)", fontWeight: 700, fontSize: 12.5, marginBottom: 11 }}>
+            <Sparkles size={14} /> Model analizuje Twoje finanse
+            <span className="ai-dots"><i /><i /><i /></span>
+          </div>
+          <div className="ai-load-bar" style={{ width: "100%" }} />
+          <div className="ai-load-bar" style={{ width: "92%" }} />
+          <div className="ai-load-bar" style={{ width: "97%" }} />
+          <div className="ai-load-bar" style={{ width: "64%" }} />
+        </div>
+      )}
+      {aiText && !loading && (
         <div className="card sens" style={{ padding: 14, background: "var(--surface2)", boxShadow: "none", marginBottom: 12, fontSize: 13.5, fontWeight: 600, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
           {aiText}
         </div>
@@ -2032,11 +2099,13 @@ function AiAnalysisCard({ data, txs, helpers, rangeLabel, update, go }) {
       {aiErr && <div style={{ color: "var(--muted)", fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, marginBottom: 12 }}>{aiErr}</div>}
       {aiReady(aiCfg) ? (
         <button className="btn btn-ghost" style={{ width: "100%" }} disabled={loading} onClick={askAI}>
-          <Sparkles size={15} style={{ color: "var(--violet)" }} /> {loading ? "Analizuję…" : aiText ? "Analizuj ponownie (AI)" : "Poproś AI o analizę"}
+          <Sparkles size={15} style={{ color: "var(--violet)" }} />
+          {loading ? <>Analizuję<span className="ai-dots"><i /><i /><i /></span></> : aiText ? "Analizuj ponownie (AI)" : "Poproś AI o analizę"}
         </button>
       ) : (
         <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => go?.("settings")}>
-          <Sparkles size={15} style={{ color: "var(--violet)" }} /> Włącz analizę AI (własny klucz)
+          <Sparkles size={15} style={{ color: "var(--violet)" }} />
+          {aiLocked(data) ? "Odblokuj analizę AI (hasło do klucza)" : "Włącz analizę AI (własny klucz)"}
         </button>
       )}
     </div>
@@ -2361,7 +2430,7 @@ function openSnapshotWindow(snap) {
 }
 
 function ReportGenerator({ data, helpers, presetRange, update, toast, go }) {
-  const aiCfg = loadAiCfg();
+  const aiCfg = aiUnlockedCfg();
   const incognito = !!data.settings.hideBalance;
   const { toMain, main } = helpers;
   const [from, setFrom] = useState(presetRange?.from && presetRange.from !== "1970-01-01" ? presetRange.from : `${todayISO().slice(0, 7)}-01`);
@@ -2471,10 +2540,25 @@ function ReportGenerator({ data, helpers, presetRange, update, toast, go }) {
           </label>
         ) : (
           <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 14, fontSize: 13 }} onClick={() => go?.("settings")}>
-            <Sparkles size={15} style={{ color: "var(--violet)" }} /> Wniosek AI — wymaga własnego klucza
+            <Sparkles size={15} style={{ color: "var(--violet)" }} />
+            {aiLocked(data) ? "Wniosek AI — odblokuj klucz hasłem" : "Wniosek AI — wymaga własnego klucza"}
           </button>
         )}
-        <button className="btn btn-primary" style={{ width: "100%" }} disabled={aiStatus === "loading"} onClick={generate}><FileText size={16} /> {aiStatus === "loading" ? "Generuję wniosek AI…" : "Generuj raport"}</button>
+        {aiStatus === "loading" && (
+          <div className="ai-load" aria-live="polite">
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--violet)", fontWeight: 700, fontSize: 12.5, marginBottom: 11 }}>
+              <Sparkles size={14} /> Model pisze wniosek do raportu
+              <span className="ai-dots"><i /><i /><i /></span>
+            </div>
+            <div className="ai-load-bar" style={{ width: "100%" }} />
+            <div className="ai-load-bar" style={{ width: "88%" }} />
+            <div className="ai-load-bar" style={{ width: "70%" }} />
+          </div>
+        )}
+        <button className="btn btn-primary" style={{ width: "100%" }} disabled={aiStatus === "loading"} onClick={generate}>
+          <FileText size={16} />
+          {aiStatus === "loading" ? <>Generuję wniosek AI<span className="ai-dots"><i /><i /><i /></span></> : "Generuj raport"}
+        </button>
       </div>
 
 
@@ -3512,7 +3596,10 @@ function Settings_({ data, helpers, user, update, updateUser, go, toast, confirm
     { id: "currency", icon: Coins, label: "Waluta i kursy", desc: `Główna: ${data.settings.mainCurrency}` },
     { id: "nav", icon: Menu, label: "Nawigacja", desc: "Układ paska i menu" },
     { id: "backup", icon: FileText, label: "Kopia zapasowa", desc: "Pobierz dane (JSON, CSV) lub wczytaj kopię" },
-    { id: "ai", icon: Sparkles, label: "Analiza AI", desc: aiReady(loadAiCfg()) ? `Włączona · ${AI_PROVIDERS[loadAiCfg().provider]?.label}` : "Wyłączona — dodaj własny klucz" },
+    { id: "ai", icon: Sparkles, label: "Analiza AI",
+      desc: data.settings.ai?.ct
+        ? (aiSession ? `Aktywna · ${AI_PROVIDERS[data.settings.ai.provider]?.label}` : "Klucz zaszyfrowany — podaj hasło, by odblokować")
+        : "Wyłączona — dodaj własny klucz" },
     { id: "profile", icon: UserRound, label: "Profil", desc: user.name },
   ];
   const [themeSheet, setThemeSheet] = useState(false);
@@ -3524,7 +3611,7 @@ function Settings_({ data, helpers, user, update, updateUser, go, toast, confirm
   if (sub === "nav") return <NavManager data={data} update={update} toast={toast} back={() => setSub(null)} />;
   if (sub === "cars") return <CarsStationsManager data={data} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
   if (sub === "backup") return <BackupManager data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
-  if (sub === "ai") return <AiSettings toast={toast} back={() => setSub(null)} />;
+  if (sub === "ai") return <AiSettings data={data} update={update} toast={toast} back={() => setSub(null)} />;
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -3668,39 +3755,81 @@ function sanitizeImported(inc) {
       navOrder: normalizeNav(Array.isArray(inc.settings?.navOrder) ? inc.settings.navOrder : DEFAULT_NAV),
       hideBalance: !!inc.settings?.hideBalance,
       ...(typeof inc.settings?.incognitoPinHash === "string" ? { incognitoPinHash: inc.settings.incognitoPinHash.slice(0, 128) } : {}),
+      /* zaszyfrowany klucz AI — przenosimy tylko poprawnie ukształtowany blob;
+         i tak jest bezużyteczny bez hasła użytkownika */
+      ...(inc.settings?.ai?.ct && inc.settings?.ai?.iv && inc.settings?.ai?.salt ? {
+        ai: {
+          v: 1,
+          provider: AI_PROVIDERS[inc.settings.ai.provider] ? inc.settings.ai.provider : "gemini",
+          model: str(inc.settings.ai.model, 80),
+          salt: str(inc.settings.ai.salt, 64),
+          iv: str(inc.settings.ai.iv, 64),
+          ct: str(inc.settings.ai.ct, 4096),
+        },
+      } : {}),
     },
   };
 }
 
-function AiSettings({ toast, back }) {
-  const saved = loadAiCfg();
-  const [provider, setProvider] = useState(saved.provider || "gemini");
-  const [key, setKey] = useState(saved.key || "");
-  const [model, setModel] = useState(saved.model || "");
+function AiSettings({ data, update, toast, back }) {
+  const stored = data.settings.ai || null;
+  const [provider, setProvider] = useState(stored?.provider || "gemini");
+  const [model, setModel] = useState(stored?.model || "");
+  const [key, setKey] = useState(legacyAiKey());   // migracja starego, jawnego klucza
+  const [pass, setPass] = useState("");
   const [show, setShow] = useState(false);
-  const [testing, setTesting] = useState(false);
-  const [result, setResult] = useState(null); // {ok, msg}
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState(null);      // {ok, msg}
+  const [unlocked, setUnlocked] = useState(!!aiSession);
   const meta = AI_PROVIDERS[provider];
+  const hasStored = !!stored?.ct;
 
-  const cfgNow = () => ({ provider, key: key.trim(), model: model.trim() || meta.defaultModel });
-
-  const save = () => {
+  /* zapis: szyfrujemy klucz hasłem i odkładamy do dokumentu (czyli do bazy) */
+  const saveKey = async () => {
     if (!key.trim()) return setResult({ ok: false, msg: "Najpierw wklej klucz API." });
-    saveAiCfg(cfgNow()); setResult({ ok: true, msg: "Zapisano na tym urządzeniu." });
-    toast("Analiza AI włączona");
-  };
-  const test = async () => {
-    if (!key.trim()) return setResult({ ok: false, msg: "Najpierw wklej klucz API." });
-    setTesting(true); setResult(null);
+    if (pass.length < 6) return setResult({ ok: false, msg: "Hasło do klucza musi mieć co najmniej 6 znaków." });
+    setBusy(true); setResult(null);
     try {
-      const txt = await askAi(cfgNow(), "Odpowiedz jednym słowem: OK", 200);
-      setResult({ ok: true, msg: `Połączenie działa. Model odpowiedział: „${txt.slice(0, 40)}”.` });
+      const blob = await aiEncrypt(key.trim(), pass);
+      const cfg = { ...blob, provider, model: model.trim() || meta.defaultModel };
+      update((d) => ({ ...d, settings: { ...d.settings, ai: cfg } }));
+      aiSession = { provider: cfg.provider, model: cfg.model, key: key.trim() };
+      dropLegacyAiKey();
+      setUnlocked(true); setKey(""); setPass("");
+      setResult({ ok: true, msg: "Zaszyfrowany klucz zapisany na koncie. Na innym urządzeniu podasz to samo hasło." });
+      toast("Analiza AI włączona");
     } catch (e) {
-      setResult({ ok: false, msg: aiErrorPl(e) });
-    } finally { setTesting(false); }
+      setResult({ ok: false, msg: "Nie udało się zaszyfrować klucza: " + (e?.message || e) });
+    } finally { setBusy(false); }
   };
-  const clear = () => {
-    saveAiCfg({}); setKey(""); setModel(""); setResult({ ok: true, msg: "Klucz usunięty z tego urządzenia." });
+
+  /* odblokowanie: odszyfrowujemy do pamięci karty, nigdzie tego nie zapisując */
+  const unlock = async () => {
+    if (!pass) return setResult({ ok: false, msg: "Podaj hasło do klucza." });
+    setBusy(true); setResult(null);
+    try {
+      const plain = await aiDecrypt(stored, pass);
+      aiSession = { provider: stored.provider, model: stored.model, key: plain };
+      setUnlocked(true); setPass("");
+      setResult({ ok: true, msg: "Klucz odblokowany na czas tej sesji." });
+      toast("Klucz AI odblokowany");
+    } catch {
+      setResult({ ok: false, msg: "Nieprawidłowe hasło — klucza nie da się odszyfrować." });
+    } finally { setBusy(false); }
+  };
+
+  const test = async () => {
+    setBusy(true); setResult(null);
+    try {
+      const txt = await askAi(aiSession, "Odpowiedz jednym słowem: OK", 200);
+      setResult({ ok: true, msg: "Połączenie działa. Model odpowiedział: " + txt.slice(0, 40) });
+    } catch (e) { setResult({ ok: false, msg: aiErrorPl(e) }); } finally { setBusy(false); }
+  };
+
+  const forget = () => {
+    update((d) => { const s = { ...d.settings }; delete s.ai; return { ...d, settings: s }; });
+    aiSession = null; setUnlocked(false); dropLegacyAiKey();
+    setResult({ ok: true, msg: "Klucz usunięty z konta." });
     toast("Klucz AI usunięty");
   };
 
@@ -3712,65 +3841,105 @@ function AiSettings({ toast, back }) {
         dostawcy. Automatyczne wnioski w Analizach i Raportach liczą się bez tego, offline i za darmo.
       </p>
 
-      <div className="card" style={{ padding: 16, marginBottom: 14 }}>
-        <Field label="Dostawca">
-          <select className="select" value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); setResult(null); }}>
-            {Object.entries(AI_PROVIDERS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
-          </select>
-          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6, lineHeight: 1.5 }}>{meta.note}</div>
-        </Field>
+      {hasStored && !unlocked ? (
+        <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 800, marginBottom: 4 }}>
+            <Lock size={17} style={{ color: "var(--accent)" }} /> Klucz zapisany i zaszyfrowany
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5, marginBottom: 14 }}>
+            Dostawca: {AI_PROVIDERS[stored.provider]?.label || stored.provider} · model {stored.model}.
+            Podaj hasło, aby odblokować go na czas tej sesji.
+          </div>
+          <Field label="Hasło do klucza">
+            <input className="input" type="password" value={pass} autoComplete="off"
+              onChange={(e) => { setPass(e.target.value); setResult(null); }}
+              onKeyDown={(e) => { if (e.key === "Enter") unlock(); }} />
+          </Field>
+          {result && <ResultNote result={result} />}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn btn-primary" style={{ flex: 2 }} disabled={busy} onClick={unlock}>
+              {busy ? "Odszyfrowuję…" : "Odblokuj"}
+            </button>
+            <button className="btn btn-danger" style={{ flex: 1 }} onClick={forget}>Usuń</button>
+          </div>
+        </div>
+      ) : (
+        <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+          {unlocked && (
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: "var(--accent)", marginBottom: 12 }}>
+              <Check size={15} /> Klucz aktywny w tej sesji
+            </div>
+          )}
+          <Field label="Dostawca">
+            <select className="select" value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); setResult(null); }}>
+              {Object.entries(AI_PROVIDERS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+            </select>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6, lineHeight: 1.5 }}>{meta.note}</div>
+          </Field>
 
-        <Field label="Klucz API">
-          <div style={{ position: "relative" }}>
-            <input className="input" type={show ? "text" : "password"} value={key} placeholder={meta.keyHint}
-              autoComplete="off" spellCheck={false} onChange={(e) => { setKey(e.target.value); setResult(null); }}
-              style={{ paddingRight: 46 }} />
-            <button className="pass-eye" type="button" aria-label={show ? "Ukryj klucz" : "Pokaż klucz"} onClick={() => setShow((s) => !s)}>
-              {show ? <EyeOff size={17} /> : <Eye size={17} />}
+          <Field label={unlocked ? "Nowy klucz API (zostaw puste, by nie zmieniać)" : "Klucz API"}>
+            <div style={{ position: "relative" }}>
+              <input className="input" type={show ? "text" : "password"} value={key} placeholder={meta.keyHint}
+                autoComplete="off" spellCheck={false} style={{ paddingRight: 46 }}
+                onChange={(e) => { setKey(e.target.value); setResult(null); }} />
+              <button className="pass-eye" type="button" aria-label={show ? "Ukryj klucz" : "Pokaż klucz"} onClick={() => setShow((s) => !s)}>
+                {show ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
+              Klucz wygenerujesz na <b style={{ color: "var(--text)" }}>{meta.keysUrl.replace("https://", "")}</b>
+            </div>
+          </Field>
+
+          <Field label="Hasło do klucza (min. 6 znaków)">
+            <input className="input" type="password" value={pass} autoComplete="new-password"
+              onChange={(e) => { setPass(e.target.value); setResult(null); }} />
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6, lineHeight: 1.5 }}>
+              Tym hasłem szyfrujemy klucz. Nie zapisujemy go nigdzie — jeśli je zapomnisz, trzeba będzie wpisać klucz od nowa.
+            </div>
+          </Field>
+
+          <Field label="Model">
+            <input className="input" value={model} placeholder={meta.defaultModel} autoComplete="off" spellCheck={false}
+              onChange={(e) => { setModel(e.target.value); setResult(null); }} />
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
+              Puste = {meta.defaultModel}. Zmień, jeśli chcesz tańszy lub nowszy model.
+            </div>
+          </Field>
+
+          {result && <ResultNote result={result} />}
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+            {unlocked && <button className="btn btn-ghost" style={{ flex: 1 }} disabled={busy} onClick={test}>Testuj</button>}
+            <button className="btn btn-primary" style={{ flex: 2 }} disabled={busy} onClick={saveKey}>
+              {busy ? "Szyfruję…" : "Zaszyfruj i zapisz"}
             </button>
           </div>
-          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
-            Klucz wygenerujesz na <b style={{ color: "var(--text)" }}>{meta.keysUrl.replace("https://", "")}</b>
-          </div>
-        </Field>
-
-        <Field label="Model">
-          <input className="input" value={model} placeholder={meta.defaultModel} autoComplete="off" spellCheck={false}
-            onChange={(e) => { setModel(e.target.value); setResult(null); }} />
-          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
-            Puste = {meta.defaultModel}. Zmień, jeśli chcesz tańszy lub nowszy model.
-          </div>
-        </Field>
-
-        {result && (
-          <div style={{ padding: "10px 12px", borderRadius: 12, marginBottom: 12, fontSize: 12.5, fontWeight: 700, lineHeight: 1.5,
-            background: result.ok ? "var(--accent-dim)" : "var(--neg-dim)", color: result.ok ? "var(--accent)" : "var(--neg)" }}>
-            {result.msg}
-          </div>
-        )}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-          <button className="btn btn-ghost" style={{ flex: 1 }} disabled={testing} onClick={test}>
-            {testing ? "Sprawdzam…" : "Testuj połączenie"}
-          </button>
-          <button className="btn btn-primary" style={{ flex: 1 }} onClick={save}>Zapisz</button>
+          {hasStored && (
+            <button className="btn btn-danger" style={{ width: "100%", marginTop: 10 }} onClick={forget}>
+              <Trash2 size={15} /> Usuń klucz z konta
+            </button>
+          )}
         </div>
-        {aiReady(saved) && (
-          <button className="btn btn-danger" style={{ width: "100%", marginTop: 10 }} onClick={clear}>
-            <Trash2 size={15} /> Usuń klucz z tego urządzenia
-          </button>
-        )}
-      </div>
+      )}
 
-      {/* uczciwie o ryzyku — klucz żyje w przeglądarce, nie na serwerze */}
       <div className="card" style={{ padding: 14, display: "flex", gap: 11, alignItems: "flex-start" }}>
-        <AlertTriangle size={18} style={{ color: "var(--warn)", flexShrink: 0, marginTop: 2 }} />
+        <Lock size={18} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} />
         <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.55 }}>
-          Klucz zapisuje się <b style={{ color: "var(--text)" }}>tylko w tej przeglądarce</b> — nie trafia do bazy ani do kopii
-          zapasowej, więc na innym urządzeniu trzeba go wpisać ponownie. Zapytania idą prosto z przeglądarki, więc klucz jest
-          widoczny w narzędziach deweloperskich — użyj klucza z limitem wydatków i nie korzystaj z tej funkcji na cudzym sprzęcie.
-          Do dostawcy wysyłamy tylko zbiorcze kwoty i nazwy kategorii, nigdy listy transakcji.
+          Do bazy trafia <b style={{ color: "var(--text)" }}>wyłącznie szyfrogram</b> (AES-256-GCM, klucz wyprowadzony z Twojego
+          hasła przez PBKDF2). Bez tego hasła nie odczyta go ani aplikacja, ani nikt z wglądem w bazę czy w kopię zapasową —
+          hasła nigdzie nie zapisujemy. Odszyfrowany klucz żyje tylko w pamięci karty i znika po odświeżeniu strony.
+          Do dostawcy AI wysyłamy zbiorcze kwoty i nazwy kategorii, nigdy listy transakcji.
         </div>
       </div>
+    </div>
+  );
+}
+
+function ResultNote({ result }) {
+  return (
+    <div style={{ padding: "10px 12px", borderRadius: 12, marginBottom: 12, fontSize: 12.5, fontWeight: 700, lineHeight: 1.5,
+      background: result.ok ? "var(--accent-dim)" : "var(--neg-dim)", color: result.ok ? "var(--accent)" : "var(--neg)" }}>
+      {result.msg}
     </div>
   );
 }
@@ -5337,10 +5506,10 @@ export default function App() {
   };
   const [drawer, setDrawer] = useState(false);
   useEffect(() => { if (!drawer) return; lockScroll(); return unlockScroll; }, [drawer]);
-  const [profileDirect, setProfileDirect] = useState(false);
-  useEffect(() => { if (!settingsSub) setProfileDirect(false); }, [settingsSub, view]);
+  /* profileDirect istniał wyłącznie po to, by ukryć pasek „wstecz” przy wejściu
+     w profil z avatara — pasek już go nie renderuje, więc flaga była tylko
+     ustawiana i nigdy nieodczytywana. */
   const openProfile = () => {
-    setProfileDirect(true);
     setView((cur) => {
       if (cur !== "settings") navStackRef.current.push(cur);
       return "settings";
@@ -5482,19 +5651,11 @@ export default function App() {
               <button className={`top-ic ${view === "dashboard" ? "top-ic-on" : ""}`} aria-label="Pulpit" onClick={() => go("dashboard")}>
                 <Home size={20} />
               </button>
-              {view === "settings" && settingsSub && !(settingsSub === "profile" && profileDirect) ? (
-                <div className="appbar-greet" style={{ display: "flex", alignItems: "center" }}>
-                  <button className="top-ic" aria-label="Wróć" onClick={() => { setSettingsSub(null); scrollTopAll(); }}>
-                    <ChevronLeft size={20} strokeWidth={2.4} />
-                  </button>
-                </div>
-              ) : (
-                <div className="appbar-greet" />
-              )}
-              {/* pigułka z miesiącem jest pozycjonowana absolutnie na środku paska
-                  i na wąskim ekranie nachodziła na przycisk „wróć” podstrony ustawień;
-                  na podstronie ustawień miesiąc i tak nic nie znaczy */}
-              {!(view === "settings" && settingsSub) && <div className="appbar-month">{periodMonthLabel}</div>}
+              {/* Podstrony ustawień mają własny przycisk wstecz przy tytule (SubHead),
+                  więc drugi w pasku był duplikatem — na wąskim ekranie wyglądał
+                  jak dwa „wstecz” jeden pod drugim i nachodził na pigułkę miesiąca. */}
+              <div className="appbar-greet" />
+              <div className="appbar-month">{periodMonthLabel}</div>
               <div style={{ flex: 1, display: "flex", justifyContent: "flex-end", gap: 10 }}>
                 <button className="top-ic" aria-label="Ustawienia" onClick={() => go("settings")}>
                   <SettingsIcon size={19} />
