@@ -1704,7 +1704,12 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onAdd, onEditT
         <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13.5, lineHeight: 1.6, marginBottom: 16 }}>
           Tryb incognito rozmywa wszystkie kwoty w aplikacji — przydaje się, gdy ktoś zagląda Ci przez ramię.
           Zanim go pierwszy raz włączysz, ustaw <b style={{ color: "var(--text)" }}>4-cyfrowy kod</b>: będzie wymagany
-          do <b style={{ color: "var(--text)" }}>wyłączenia</b> trybu, żeby nikt poza Tobą nie mógł odsłonić Twoich finansów.
+          do <b style={{ color: "var(--text)" }}>wyłączenia</b> trybu.
+        </p>
+        {/* uczciwie o zakresie ochrony — 4 cyfry to zasłona na ekran, nie szyfrowanie */}
+        <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 12.5, lineHeight: 1.55, marginBottom: 16 }}>
+          To zasłona na ekran, a nie zabezpieczenie danych: kwoty są tylko rozmywane, a czterocyfrowy kod
+          nie ochroni konta przed kimś, kto zna Twoje hasło albo ma dostęp do urządzenia.
         </p>
         <Field label="Wybierz kod (4 cyfry)"><PinDigits value={pin1} onChange={(v) => { setPin1(v); setPinErr(""); }} error={pinErr} autoFocus={AUTOF} /></Field>
         <Field label="Powtórz kod" error={pinErr}><PinDigits value={pin2} onChange={(v) => { setPin2(v); setPinErr(""); }} error={pinErr} /></Field>
@@ -1834,6 +1839,12 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
 
 /* ---------------- insights & AI analysis ---------------- */
 
+/* Zapytanie do api.anthropic.com leci wprost z przeglądarki, bez klucza —
+   działa tylko wtedy, gdy aplikacja jest hostowana przez Claude.ai (tam żądanie
+   idzie przez proxy z autoryzacją). Na Vercelu blokuje je CORS i brak klucza,
+   więc przycisk zawsze kończył się błędem. Klucza NIE wolno tu wstawić — kod
+   front-endu jest jawny. Docelowo: funkcja serwerowa trzymająca klucz. */
+const AI_AVAILABLE = typeof window !== "undefined" && /(^|\.)claude\.ai$/i.test(window.location.hostname);
 const AI_COOLDOWN = 10 * 60 * 1000; // 10 min
 const aiCooldownLeft = (data) => Math.max(0, AI_COOLDOWN - (Date.now() - (data.settings.aiLastAt || 0)));
 
@@ -1948,9 +1959,11 @@ function AiAnalysisCard({ data, txs, helpers, rangeLabel, update }) {
         </div>
       )}
       {aiErr && <div style={{ color: "var(--muted)", fontSize: 12.5, fontWeight: 600, lineHeight: 1.5, marginBottom: 12 }}>{aiErr}</div>}
-      <button className="btn btn-ghost" style={{ width: "100%" }} disabled={loading} onClick={askAI}>
-        <Sparkles size={15} style={{ color: "var(--violet)" }} /> {loading ? "Analizuję…" : aiText ? "Analizuj ponownie (AI)" : "Poproś AI o analizę"}
-      </button>
+      {AI_AVAILABLE && (
+        <button className="btn btn-ghost" style={{ width: "100%" }} disabled={loading} onClick={askAI}>
+          <Sparkles size={15} style={{ color: "var(--violet)" }} /> {loading ? "Analizuję…" : aiText ? "Analizuj ponownie (AI)" : "Poproś AI o analizę"}
+        </button>
+      )}
     </div>
   );
 }
@@ -2382,10 +2395,12 @@ function ReportGenerator({ data, helpers, presetRange, update, toast }) {
           ))}
         </div>
         {cfgErrs.cats && <div className="err-msg" style={{ marginTop: -8, marginBottom: 12 }}>{cfgErrs.cats}</div>}
-        <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 700, fontSize: 13.5, marginBottom: 14, padding: "12px 14px", background: "var(--surface2)", borderRadius: 14 }}>
-          <input type="checkbox" checked={includeAi} onChange={(e) => setIncludeAi(e.target.checked)} style={{ width: 17, height: 17, accentColor: "var(--accent)" }} />
-          <Sparkles size={15} style={{ color: "var(--violet)" }} /> Dołącz wniosek AI do raportu
-        </label>
+        {AI_AVAILABLE && (
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontWeight: 700, fontSize: 13.5, marginBottom: 14, padding: "12px 14px", background: "var(--surface2)", borderRadius: 14 }}>
+            <input type="checkbox" checked={includeAi} onChange={(e) => setIncludeAi(e.target.checked)} style={{ width: 17, height: 17, accentColor: "var(--accent)" }} />
+            <Sparkles size={15} style={{ color: "var(--violet)" }} /> Dołącz wniosek AI do raportu
+          </label>
+        )}
         <button className="btn btn-primary" style={{ width: "100%" }} disabled={aiStatus === "loading"} onClick={generate}><FileText size={16} /> {aiStatus === "loading" ? "Generuję wniosek AI…" : "Generuj raport"}</button>
       </div>
 
@@ -4936,7 +4951,7 @@ export default function App() {
        normalnie. Baner podnosimy tylko, gdy sesja MIAŁA dane i je zgubiła. */
     if (looksEmptyDoc(data)) {
       if (!startedEmptyRef.current) {
-        console.error("save blocked: empty document would wipe user_data", data);
+        console.error("save blocked: empty document would wipe user_data"); // bez treści danych
         setWipeGuard(true);
       }
       return;
@@ -4950,7 +4965,8 @@ export default function App() {
       dbLoad(userId)
         .then(({ data: remote }) => {
           if (remote && !looksEmptyDoc(remote)) {
-            console.error("save blocked: row already holds data, refusing to overwrite", remote);
+            console.error("save blocked: row already holds data, refusing to overwrite",
+              { transactions: remote.transactions?.length, refuels: remote.refuels?.length }); // same liczniki
             loadFailedRef.current = true; // twardy stop dla wszystkich ścieżek zapisu
             setWipeGuard(true);
           } else {
