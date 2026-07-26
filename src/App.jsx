@@ -1284,7 +1284,10 @@ function catSlices(txs, categories, toMain, limit = 5) {
 function StatRail({ children }) {
   const ref = useRef(null);
   const [idx, setIdx] = useState(0);
-  const count = React.Children.count(children);
+  /* toArray odsiewa null/false z warunkowo renderowanych kafelków — React.Children.count
+     liczy je jako pełnoprawne dzieci i dorzucałby kropkę do nieistniejącej karty */
+  const items = React.Children.toArray(children);
+  const count = items.length;
   const onScroll = () => {
     const el = ref.current;
     if (!el || count < 2) return;
@@ -1294,7 +1297,7 @@ function StatRail({ children }) {
   };
   return (
     <div>
-      <div className="stat-grid stagger" ref={ref} onScroll={onScroll}>{children}</div>
+      <div className="stat-grid stagger" ref={ref} onScroll={onScroll}>{items}</div>
       {count > 1 && (
         <div className="rail-dots" aria-hidden="true">
           {Array.from({ length: count }).map((_, i) => <span key={i} className={i === idx ? "on" : ""} />)}
@@ -2731,6 +2734,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
      spalanie i koszty auta mają sens dopiero na dłuższej próbce. Miesiąc można
      wybrać ręcznie w selektorze nad kartami aut. */
   const [period, setPeriod] = useState("all");
+  const [editRefuel, setEditRefuel] = useState(null);
   const [allRefuelsOpen, setAllRefuelsOpen] = useState(false);
   const [allStationsOpen, setAllStationsOpen] = useState(false);
   const isMobileF = useMedia("(max-width: 767px)");
@@ -2852,7 +2856,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           </div>
           <select className="select" style={{ flex: 1, minWidth: 0, maxWidth: 280 }} value={period}
             onChange={(e) => setPeriod(e.target.value)} aria-label="Okres statystyk paliwa">
-            <option value="all">Cały okres — wszystkie tankowania</option>
+            <option value="all">Cały okres</option>
             {monthOpts.map((m) => (
               <option key={m} value={m}>{MONTHS_FULL[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</option>
             ))}
@@ -2893,7 +2897,9 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           {car && (
             <>
               {stats ? (
-                <div className="stat-grid stagger">
+                /* StatRail zamiast gołego .stat-grid: na mobile karty są poziomym
+                   scrollerem, a kropki pod spodem pokazują, że dalej są kolejne */
+                <StatRail>
                   <StatCard icon={Gauge} label="Spalanie" value={stats.consumption != null ? `${stats.consumption.toFixed(1)} l/100km` : "—"}
                     sub={stats.consumption != null ? `z ${stats.measuredCount} ${stats.measuredCount === 1 ? "tankowania" : "tankowań"}` : "podaj dystans przy tankowaniu"} />
                   <StatCard icon={Coins} label="Śr. cena / litr" value={fmtMoney(stats.avgPrice, main)} />
@@ -2901,7 +2907,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                   <StatCard icon={MapPin} label="Dystans" value={`${stats.distance.toLocaleString("pl-PL")} km`} sub={stats.monthlyDist ? `~${Math.round(stats.monthlyDist).toLocaleString("pl-PL")} km/mies.` : undefined} />
                   <StatCard icon={Droplets} label="Tankowania" value={stats.count} sub={`${stats.totalLiters.toFixed(0)} l łącznie`} />
                   {stats.costPer100 != null && <StatCard icon={Percent} label="Koszt / 100 km" value={fmtMoney(stats.costPer100, main)} />}
-                </div>
+                </StatRail>
               ) : (
                 <EmptyState icon={Droplets} title={period === "all" ? "Brak tankowań" : "Brak tankowań w tym miesiącu"}
                   desc={period === "all"
@@ -2933,10 +2939,16 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
 
               {refuels.length > 0 && (() => {
                 const revRefuels = [...refuels].reverse();
+                /* cały wiersz otwiera edycję (wygodne na telefonie), a długopis
+                   robi to samo jawnie — przyciski zatrzymują bąbelkowanie,
+                   żeby kosz nie odpalał jednocześnie edycji */
+                const openEdit = (r) => { setAllRefuelsOpen(false); setEditRefuel(r); };
                 const renderRefuel = (r) => {
                   const st = data.stations.find((s) => s.id === r.stationId);
                   return (
-                    <div key={r.id} className="tx-row" style={{ cursor: "default" }}>
+                    <div key={r.id} className="tx-row row-press" style={{ cursor: "pointer" }}
+                      onClick={() => openEdit(r)} role="button" tabIndex={0}
+                      onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openEdit(r); } }}>
                       <div className="icon-badge" style={{ background: "#F9731622", color: "#F97316" }}><Fuel size={19} /></div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{st?.name || "Stacja"} · {r.liters} l</div>
@@ -2947,7 +2959,10 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                         </div>
                       </div>
                       <div className="sens" style={{ fontWeight: 800 }}>{fmtMoney(r.cost, main)}</div>
-                      <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Usuń tankowanie" onClick={() => delRefuel(r)}><Trash2 size={15} /></button>
+                      <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Edytuj tankowanie"
+                        onClick={(e) => { e.stopPropagation(); openEdit(r); }}><Pencil size={15} /></button>
+                      <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Usuń tankowanie"
+                        onClick={(e) => { e.stopPropagation(); delRefuel(r); }}><Trash2 size={15} /></button>
                     </div>
                   );
                 };
@@ -3036,14 +3051,27 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
         }} />}
       </Sheet>
 
-      <Sheet open={openRefuel} onClose={() => setOpenRefuel(false)} title="Dodaj tankowanie">
-        {openRefuel && <RefuelForm data={data} main={main} defaultCar={activeCar} onClose={() => setOpenRefuel(false)} onSave={(r) => {
+      <Sheet open={openRefuel || !!editRefuel} onClose={() => { setOpenRefuel(false); setEditRefuel(null); }}
+        title={editRefuel ? "Edytuj tankowanie" : "Dodaj tankowanie"}>
+        {(openRefuel || editRefuel) && <RefuelForm data={data} main={main} defaultCar={activeCar} initial={editRefuel}
+          onClose={() => { setOpenRefuel(false); setEditRefuel(null); }} onSave={(r) => {
           const carName = data.cars.find((c) => c.id === r.carId)?.name || "auto";
           const stName = data.stations.find((s) => s.id === r.stationId)?.name || "";
-          const tx = { id: `fueltx-${r.id}`, type: "expense", name: `Tankowanie · ${carName}`, amount: r.cost, currency: data.settings.mainCurrency, categoryId: "c-fuel", date: r.date, note: stName, refuelId: r.id };
-          update((d) => ({ ...d, refuels: [...d.refuels, r], transactions: [...d.transactions, tx] }));
-          setOpenRefuel(false); toast("Tankowanie zapisane i dodane do historii");
-        }} onNeedCar={() => { setOpenRefuel(false); setCarForm({}); }} onNeedStation={() => { setStationForm({}); }} />}
+          const isEdit = !!editRefuel;
+          update((d) => ({
+            ...d,
+            /* przy edycji scalamy z oryginałem — zachowuje ewentualny stary
+               odometer, z którego liczą się dystanse kolejnych starych wpisów */
+            refuels: isEdit ? d.refuels.map((x) => (x.id === r.id ? { ...x, ...r } : x)) : [...d.refuels, r],
+            transactions: isEdit
+              ? d.transactions.map((t) => (t.refuelId === r.id
+                  ? { ...t, name: `Tankowanie · ${carName}`, amount: r.cost, date: r.date, note: stName }
+                  : t))
+              : [...d.transactions, { id: `fueltx-${r.id}`, type: "expense", name: `Tankowanie · ${carName}`, amount: r.cost, currency: data.settings.mainCurrency, categoryId: "c-fuel", date: r.date, note: stName, refuelId: r.id }],
+          }));
+          setOpenRefuel(false); setEditRefuel(null);
+          toast(isEdit ? "Tankowanie zaktualizowane" : "Tankowanie zapisane i dodane do historii");
+        }} onNeedCar={() => { setOpenRefuel(false); setEditRefuel(null); setCarForm({}); }} onNeedStation={() => { setStationForm({}); }} />}
       </Sheet>
     </div>
   );
@@ -3092,13 +3120,15 @@ function StationForm({ initial, onSave, onClose }) {
   );
 }
 
-function RefuelForm({ data, main, defaultCar, onSave, onClose, onNeedCar, onNeedStation }) {
-  const [carId, setCarId] = useState(defaultCar || data.cars[0]?.id || "");
-  const [stationId, setStationId] = useState(data.stations[0]?.id || "");
-  const [dist, setDist] = useState("");
-  const [liters, setLiters] = useState("");
-  const [cost, setCost] = useState("");
-  const [date, setDate] = useState(todayISO());
+function RefuelForm({ data, main, defaultCar, initial, onSave, onClose, onNeedCar, onNeedStation }) {
+  const [carId, setCarId] = useState(initial?.carId || defaultCar || data.cars[0]?.id || "");
+  const [stationId, setStationId] = useState(initial?.stationId || data.stations[0]?.id || "");
+  /* przy edycji starego wpisu (tylko licznik) podstawiamy dystans wyliczony
+     w Fuel_ — dzięki temu pole nigdy nie startuje puste */
+  const [dist, setDist] = useState(initial ? String(initial.distance ?? initial.dist ?? "") : "");
+  const [liters, setLiters] = useState(initial ? String(initial.liters) : "");
+  const [cost, setCost] = useState(initial ? String(initial.cost) : "");
+  const [date, setDate] = useState(initial?.date || todayISO());
   const [errs, setErrs] = useState({});
   const l = parseNum(liters), c = parseNum(cost), dNum = parseNum(dist);
   const ppl = !isNaN(l) && l > 0 && !isNaN(c) && c > 0 ? c / l : null;
@@ -3114,7 +3144,7 @@ function RefuelForm({ data, main, defaultCar, onSave, onClose, onNeedCar, onNeed
     if (isNaN(l) || l <= 0) e.liters = "Litry muszą być większe od 0.";
     if (isNaN(c) || c <= 0) e.cost = "Kwota musi być większa od 0.";
     setErrs(e); if (Object.keys(e).length) return;
-    onSave({ id: uid(), carId, stationId, distance: Math.round(d), liters: Math.round(l * 100) / 100, cost: Math.round(c * 100) / 100, date });
+    onSave({ id: initial?.id || uid(), carId, stationId, distance: Math.round(d), liters: Math.round(l * 100) / 100, cost: Math.round(c * 100) / 100, date });
   };
 
   if (!data.cars.length) return <EmptyState icon={CarFront} title="Najpierw dodaj auto" desc="Aby zapisać tankowanie, potrzebny jest samochód." action={<button className="btn btn-primary" onClick={onNeedCar}>Dodaj samochód</button>} />;
@@ -3149,7 +3179,9 @@ function RefuelForm({ data, main, defaultCar, onSave, onClose, onNeedCar, onNeed
       <Field label="Data"><input type="date" className="input" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} /></Field>
       <div style={{ display: "flex", gap: 10 }}>
         <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Anuluj</button>
-        <button className="btn btn-primary" style={{ flex: 2 }} onClick={submit} disabled={!data.stations.length}>Zapisz tankowanie</button>
+        <button className="btn btn-primary" style={{ flex: 2 }} onClick={submit} disabled={!data.stations.length}>
+          {initial ? "Zapisz zmiany" : "Zapisz tankowanie"}
+        </button>
       </div>
     </>
   );
