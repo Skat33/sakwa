@@ -4888,6 +4888,10 @@ export default function App() {
   async function loadUserData(su) {
     let d = null;
     let restoredOffline = false;
+    /* reset per konto — bez tego przelogowanie w tej samej karcie omijałoby
+       preflight (flaga zostawała z poprzedniego użytkownika) */
+    preflightDoneRef.current = false;
+    setWipeGuard(false);
     try {
       let { data: remote, updatedAt } = await dbLoad(su.id);
       /* Brak wiersza NIE oznacza automatycznie nowego konta — RLS nie zwraca
