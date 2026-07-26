@@ -1032,7 +1032,7 @@ function EmptyState({ icon: I, title, desc, action }) {
 }
 
 /* swipeable transaction row */
-function TxRow({ tx, cat, main, toMain, onEdit, onDelete, showDate }) {
+function TxRow({ tx, cat, main, toMain, onEdit, onDelete, showDate, overBudget }) {
   const [dx, setDx] = useState(0);
   const start = useRef(null);
   const isMobile = useMedia("(max-width: 767px)");
@@ -1067,10 +1067,21 @@ function TxRow({ tx, cat, main, toMain, onEdit, onDelete, showDate }) {
           <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, display: "flex", alignItems: "center", gap: 5 }}>
             <span style={{ width: 7, height: 7, borderRadius: 3, background: cat?.color || UNCAT.color, flexShrink: 0 }} />
             <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cat?.name || UNCAT.name}{showDate ? ` · ${fmtDate(tx.date)}` : ""}</span>
+            {overBudget && (
+              <span title="Kategoria przekroczyła budżet w tym miesiącu" aria-label="Kategoria ponad budżet"
+                style={{ display: "inline-flex", alignItems: "center", color: "var(--warn)", flexShrink: 0 }}>
+                <AlertTriangle size={12} />
+              </span>
+            )}
           </div>
         </div>
         <div className="sens" style={{ textAlign: "right" }}>
-          <span className="amt-pill" style={{ background: tx.type === "income" ? "var(--accent-dim)" : "var(--neg-dim)", color: tx.type === "income" ? "var(--accent)" : "var(--neg)" }}>
+          <span className="amt-pill" style={{
+            background: tx.type === "income" ? "var(--accent-dim)" : "var(--neg-dim)",
+            color: tx.type === "income" ? "var(--accent)" : "var(--neg)",
+            /* wydatek z kategorii ponad budżet dostaje obwódkę w kolorze ostrzeżenia */
+            boxShadow: overBudget ? "inset 0 0 0 1.5px var(--warn)" : undefined,
+          }}>
             {tx.type === "income" ? "+" : "−"}{fmtMoney(Math.abs(converted), main)}
           </span>
           {tx.currency !== main && (
@@ -1243,7 +1254,8 @@ function TransactionForm({ data, initial, onSave, onClose }) {
 
 /* ---------------- dashboard ---------------- */
 
-function Donut({ slices, size = 150, centerLabel, centerValue }) {
+/* valueMode: "pct" = udział procentowy, "amount" = kwota w walucie głównej */
+function Donut({ slices, size = 150, centerLabel, centerValue, valueMode = "pct", main = "PLN" }) {
   const total = slices.reduce((s, x) => s + x.value, 0);
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 18, flexWrap: "wrap", userSelect: "none" }}
@@ -1270,7 +1282,9 @@ function Donut({ slices, size = 150, centerLabel, centerValue }) {
           <div key={s.name} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700 }}>
             <span style={{ width: 9, height: 9, borderRadius: 3, background: s.color, flexShrink: 0 }} />
             <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</span>
-            <span style={{ color: "var(--muted)" }}>{total ? Math.round((s.value / total) * 100) : 0}%</span>
+            <span className={valueMode === "amount" ? "sens" : undefined} style={{ color: "var(--muted)", flexShrink: 0 }}>
+              {valueMode === "amount" ? fmtMoney(s.value, main, true) : `${total ? Math.round((s.value / total) * 100) : 0}%`}
+            </span>
           </div>
         ))}
         {slices.length === 0 && <span style={{ color: "var(--muted)", fontWeight: 600, fontSize: 13 }}>Brak wydatków w tym okresie.</span>}
@@ -1294,6 +1308,63 @@ function catSlices(txs, categories, toMain, limit = 5) {
     return [...top, { name: "Pozostałe", color: "#6B7280", value: rest }];
   }
   return arr;
+}
+
+/* Szkielet pulpitu na czas wczytywania sesji i danych — układ odpowiada temu,
+   co pojawi się po załadowaniu, więc treść nie „skacze" po podmianie. */
+function AppSkeleton() {
+  const bar = (width, height = 12, radius = 8) => (
+    <div className="skeleton" style={{ width, height, borderRadius: radius }} />
+  );
+  return (
+    <div className="app-scroll" aria-busy="true" aria-label="Wczytywanie danych">
+      <div style={{ maxWidth: 1100, margin: "0 auto", display: "flex", flexDirection: "column", gap: 18,
+        padding: "calc(max(env(safe-area-inset-top), 34px) + 10px) 16px 40px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {bar(42, 42, 13)}{bar(42, 42, 13)}
+          <div style={{ flex: 1 }} />{bar(104, 36, 999)}<div style={{ flex: 1 }} />
+          {bar(42, 42, 13)}{bar(44, 44, 14)}
+        </div>
+
+        <div className="card" style={{ padding: 22 }}>
+          {bar(110, 11)}
+          <div style={{ height: 14 }} />{bar("62%", 38, 12)}
+          <div style={{ height: 16 }} />
+          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>{bar(150, 30, 999)}{bar(150, 30, 999)}</div>
+          <div style={{ height: 18 }} />{bar("100%", 10, 999)}
+          <div style={{ height: 20 }} />
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10 }}>
+            {[0, 1, 2, 3].map((i) => (
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8 }}>
+                {bar(56, 56, 18)}{bar(48, 9)}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="stat-grid">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="card stat-card" style={{ padding: 16 }}>
+              {bar(64, 10)}<div style={{ height: 12 }} />{bar("72%", 22, 10)}
+              <div style={{ height: 9 }} />{bar("46%", 9)}
+            </div>
+          ))}
+        </div>
+
+        <div className="card" style={{ padding: 14 }}>
+          {bar(160, 13)}
+          <div style={{ height: 14 }} />
+          {[0, 1, 2, 3].map((i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 4px" }}>
+              {bar(40, 40, 13)}
+              <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 7 }}>{bar("55%", 12)}{bar("34%", 10)}</div>
+              {bar(76, 24, 999)}
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 }
 
 function StatRail({ children }) {
@@ -1374,7 +1445,7 @@ function PinDigits({ value, onChange, error, autoFocus }) {
 }
 
 function Dashboard({ data, helpers, go, update, toast, userEmail, onAdd, onEditTx, onDeleteTx }) {
-  const { toMain, main } = helpers;
+  const { toMain, main, isOverBudget } = helpers;
   const now = new Date();
   const curYM = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
   const prev = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -1573,7 +1644,8 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onAdd, onEditT
             <div className="tx-list" style={{ display: "flex", flexDirection: "column" }}>
               {recent.map((t) => (
                 <TxRow key={t.id} tx={t} cat={data.categories.find((c) => c.id === t.categoryId)}
-                  main={main} toMain={toMain} onEdit={onEditTx} onDelete={onDeleteTx} showDate />
+                  main={main} toMain={toMain} onEdit={onEditTx} onDelete={onDeleteTx} showDate
+                  overBudget={isOverBudget?.(t)} />
               ))}
             </div>
           )}
@@ -1632,7 +1704,7 @@ function Dashboard({ data, helpers, go, update, toast, userEmail, onAdd, onEditT
 /* ---------------- history ---------------- */
 
 function History({ data, helpers, onEditTx, onDeleteTx }) {
-  const { toMain, main } = helpers;
+  const { toMain, main, isOverBudget } = helpers;
   const [q, setQ] = useState("");
   const [type, setType] = useState("all");
   const [sort, setSort] = useState("date-desc");
@@ -1704,7 +1776,8 @@ function History({ data, helpers, onEditTx, onDeleteTx }) {
             <div className="card tx-list" style={{ padding: 6, display: "flex", flexDirection: "column" }}>
               {g.items.map((t) => (
                 <TxRow key={t.id} tx={t} cat={data.categories.find((c) => c.id === t.categoryId)}
-                  main={main} toMain={toMain} onEdit={onEditTx} onDelete={onDeleteTx} showDate={!g.key} />
+                  main={main} toMain={toMain} onEdit={onEditTx} onDelete={onDeleteTx} showDate={!g.key}
+                  overBudget={isOverBudget?.(t)} />
               ))}
             </div>
           </div>
@@ -1902,6 +1975,7 @@ function Stats({ data, helpers, go, update, toast }) {
   const { toMain, main } = helpers;
   const [preset, setPreset] = useState("m");
   const [custom, setCustom] = useState({ from: `${todayISO().slice(0, 7)}-01`, to: todayISO() });
+  const [catMode, setCatMode] = useState("pct"); // jednostka listy kategorii: "pct" | "amount"
   const [chartsReady, setChartsReady] = useState(false);
   useEffect(() => {
     const t = setTimeout(() => setChartsReady(true), 30);
@@ -1993,8 +2067,19 @@ function Stats({ data, helpers, go, update, toast }) {
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           <div className="card" style={{ padding: 18 }}>
-            <div style={{ fontWeight: 800, marginBottom: 12 }}>Wydatki wg kategorii</div>
-            {chartsReady ? <Donut slices={slices} centerLabel="Razem" centerValue={fmtMoney(exp, main, true)} /> : <div className="skeleton" style={{ height: 150 }} />}
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 12 }}>
+              <div style={{ fontWeight: 800 }}>Wydatki wg kategorii</div>
+              {/* przełącznik jednostki listy kategorii: udział % albo kwota */}
+              <div className="seg" style={{ flexShrink: 0 }}>
+                <button className={catMode === "pct" ? "on" : ""} style={{ padding: "5px 11px", fontSize: 12.5 }}
+                  onClick={() => setCatMode("pct")} aria-pressed={catMode === "pct"}>%</button>
+                <button className={catMode === "amount" ? "on" : ""} style={{ padding: "5px 11px", fontSize: 12.5 }}
+                  onClick={() => setCatMode("amount")} aria-pressed={catMode === "amount"}>{main}</button>
+              </div>
+            </div>
+            {chartsReady
+              ? <Donut slices={slices} valueMode={catMode} main={main} centerLabel="Razem" centerValue={fmtMoney(exp, main, true)} />
+              : <div className="skeleton" style={{ height: 150 }} />}
           </div>
           <AiAnalysisCard data={data} txs={txs} helpers={helpers} update={update} rangeLabel={PRESETS.find((p) => p.id === preset)?.label || "własny zakres"} />
           <ReportGenerator data={data} helpers={helpers} update={update} toast={toast} presetRange={null} />
@@ -4666,9 +4751,26 @@ export default function App() {
   const helpers = useMemo(() => {
     if (!data) return null;
     const rates = data.settings.rates, main = data.settings.mainCurrency;
+    const toMain = (amount, cur) => amount * ((rates[cur] || 1) / (rates[main] || 1));
+    /* Zbiór kluczy "kategoria|miesiąc", w których wydatki przebiły limit budżetu.
+       Liczony raz dla całej apki, żeby listy transakcji mogły oznaczać takie
+       wydatki bez przeliczania budżetu przy każdym wierszu. */
+    const over = new Set();
+    const spent = {};
+    data.transactions.forEach((t) => {
+      if (t.type !== "expense") return;
+      const k = `${t.categoryId}|${ym(t.date)}`;
+      spent[k] = (spent[k] || 0) + toMain(t.amount, t.currency);
+    });
+    Object.entries(data.budgets || {}).forEach(([m, limits]) => {
+      Object.entries(limits || {}).forEach(([catId, limit]) => {
+        if (typeof limit === "number" && limit > 0 && (spent[`${catId}|${m}`] || 0) > limit) over.add(`${catId}|${m}`);
+      });
+    });
     return {
       main,
-      toMain: (amount, cur) => amount * ((rates[cur] || 1) / (rates[main] || 1)),
+      toMain,
+      isOverBudget: (t) => t.type === "expense" && over.has(`${t.categoryId}|${ym(t.date)}`),
       /* podsekcje pytają o to przed otwarciem formularza dodawania */
       dbDown, addBlocked,
     };
@@ -4761,10 +4863,12 @@ export default function App() {
   }, [phase]);
 
   if (phase === "loading") {
+    /* motyw z localStorage, nie na sztywno "dark" — inaczej użytkownik jasnego
+       motywu dostaje ciemny błysk przed pierwszym renderem danych */
     return (
-      <div className="fin-root" data-theme="dark">
+      <div className="fin-root" data-theme={authTheme}>
         <style>{CSS}</style>
-        <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center", color: "var(--muted)", fontWeight: 700 }}>Wczytywanie…</div>
+        <AppSkeleton />
       </div>
     );
   }
