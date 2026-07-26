@@ -804,6 +804,21 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 }
 .drawer-item:not(.on):active { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
 
+.db-banner {
+  position: sticky; top: 0; z-index: 70; margin: 0 0 14px;
+  display: flex; align-items: center; gap: 12px; padding: 12px 14px;
+  border-radius: 15px; border: 1px solid color-mix(in srgb, var(--neg) 45%, transparent);
+  background: color-mix(in srgb, var(--neg) 14%, var(--surface));
+  box-shadow: var(--shadow);
+}
+.db-banner .db-ic { flex-shrink: 0; color: var(--neg); display: flex; }
+.db-banner .db-t { font-weight: 800; font-size: 13.5; color: var(--text); }
+.db-banner .db-d { font-size: 12.5px; font-weight: 600; color: var(--muted); margin-top: 2px; line-height: 1.45; }
+.db-banner button { flex-shrink: 0; }
+@media (max-width: 480px) {
+  .db-banner { flex-wrap: wrap; }
+  .db-banner button { width: 100%; }
+}
 .statusbar-scrim {
   position: fixed; top: 0; left: 0; right: 0; z-index: 30; pointer-events: none;
   height: calc(max(env(safe-area-inset-top), 34px));
@@ -2351,7 +2366,7 @@ function HCarousel({ title, count, chipTone, children, emptyText }) {
 }
 
 function Goals({ data, helpers, update, toast, confirm }) {
-  const { main } = helpers;
+  const { main, dbDown, addBlocked } = helpers;
   const wrapCards = useMedia("(min-width: 768px)");
   const [form, setForm] = useState(null);
   const [pay, setPay] = useState(null);
@@ -2437,7 +2452,7 @@ function Goals({ data, helpers, update, toast, confirm }) {
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <h1 className="page-title">Cele</h1>
-        <button className="btn btn-primary" onClick={() => setForm({})}><Plus size={16} /> Nowy cel</button>
+        <button className="btn btn-primary" disabled={dbDown} onClick={() => { if (!addBlocked()) setForm({}); }}><Plus size={16} /> Nowy cel</button>
       </div>
       {data.goals.length > 0 && (
         <div className="card" style={{ padding: 18 }}>
@@ -2450,7 +2465,7 @@ function Goals({ data, helpers, update, toast, confirm }) {
       )}
       {data.goals.length === 0 ? (
         <EmptyState icon={Target} title="Brak celów" desc="Utwórz pierwszy cel oszczędnościowy — wakacje, poduszkę finansową albo nowy sprzęt."
-          action={<button className="btn btn-primary" onClick={() => setForm({})}><Plus size={16} /> Utwórz cel</button>} />
+          action={<button className="btn btn-primary" disabled={dbDown} onClick={() => { if (!addBlocked()) setForm({}); }}><Plus size={16} /> Utwórz cel</button>} />
       ) : isMobileG ? (
         <>
           <HCarousel title="Aktywne" count={activeGoals.length} emptyText="Brak aktywnych celów — wszystkie osiągnięte, gratulacje!">
@@ -2725,7 +2740,7 @@ function Reports({ data, helpers, go, toast, confirm, update }) {
 }
 
 function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefuel }) {
-  const { main } = helpers;
+  const { main, dbDown, addBlocked } = helpers;
   const [activeCar, setActiveCar] = useState(data.cars[0]?.id || null);
   const [carForm, setCarForm] = useState(null);
   const [stationForm, setStationForm] = useState(null);
@@ -2831,9 +2846,9 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
         <h1 className="page-title" style={{ margin: 0 }}>Paliwo</h1>
         {!isMobileF && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-ghost" onClick={() => setCarForm({})}><Plus size={15} /> Auto</button>
-            <button className="btn btn-ghost" onClick={() => setStationForm({})}><Plus size={15} /> Stacja</button>
-            <button className="btn btn-primary" disabled={!data.cars.length || !data.stations.length} onClick={() => setOpenRefuel(true)}>
+            <button className="btn btn-ghost" disabled={dbDown} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
+            <button className="btn btn-ghost" disabled={dbDown} onClick={() => { if (!addBlocked()) setStationForm({}); }}><Plus size={15} /> Stacja</button>
+            <button className="btn btn-primary" disabled={dbDown || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
               <Droplets size={16} /> Dodaj tankowanie
             </button>
           </div>
@@ -2841,9 +2856,9 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
       </div>
       {isMobileF && (
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: -6 }}>
-          <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setCarForm({})}><Plus size={15} /> Auto</button>
-          <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => setStationForm({})}><Plus size={15} /> Stacja</button>
-          <button className="btn btn-primary" style={{ width: "100%", gridColumn: "1 / -1" }} disabled={!data.cars.length || !data.stations.length} onClick={() => setOpenRefuel(true)}>
+          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={dbDown} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
+          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={dbDown} onClick={() => { if (!addBlocked()) setStationForm({}); }}><Plus size={15} /> Stacja</button>
+          <button className="btn btn-primary" style={{ width: "100%", gridColumn: "1 / -1" }} disabled={dbDown || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
             <Droplets size={16} /> Dodaj tankowanie
           </button>
         </div>
@@ -4176,6 +4191,8 @@ export default function App() {
   const awaitingResetRef = useRef(false);
   const [sessionUser, setSessionUser] = useState(null);
   const [userId, setUserId] = useState(null);
+  const [dbDown, setDbDown] = useState(false);
+  const loadFailedRef = useRef(false); // odczyt padł => nigdy nie zapisuj (patrz loadUserData)
   const [data, setData] = useState(null);
   const [view, setView] = useState("dashboard");
   const [settingsSub, setSettingsSub] = useState(null);
@@ -4520,9 +4537,15 @@ export default function App() {
     let d = null;
     try {
       d = await dbLoad(su.id);
+      loadFailedRef.current = false;
     } catch (e) {
       console.error("dbLoad", e);
-      setTimeout(() => toast("Nie udało się pobrać danych z bazy — sprawdź połączenie"), 400);
+      /* Nie udało się POBRAĆ danych — w pamięci ląduje pusty dokument. Zapis
+         jest upsertem całości, więc jedno udane przejście skasowałoby realne
+         dane w bazie. Do końca życia tej karty blokujemy więc zapisy; wyjście
+         z tego stanu to przeładowanie strony (o co prosi baner). */
+      loadFailedRef.current = true;
+      setDbDown(true);
     }
     if (!d) d = emptyData();
     d = { ...emptyData(), ...d, settings: { ...emptyData().settings, ...(d.settings || {}), rates: { ...DEFAULT_RATES, ...(d.settings?.rates || {}) } } };
@@ -4566,18 +4589,40 @@ export default function App() {
   /* persist data (debounced) */
   const saveTimer = useRef(null);
   useEffect(() => {
-    if (!data || !userId) return;
+    if (!data || !userId || loadFailedRef.current) return;
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
-      dbSave(userId, data).catch((e) => {
-        console.error("dbSave", e);
-        toast("Błąd zapisu do bazy — zmiany mogą nie zostać zachowane");
-      });
+      dbSave(userId, data)
+        .then(() => setDbDown(false))
+        .catch((e) => { console.error("dbSave", e); setDbDown(true); });
     }, 600);
     return () => clearTimeout(saveTimer.current);
   }, [data, userId]);
 
+  /* baza padła => co 12 s próbujemy zapisać ponownie. Zapis jest upsertem
+     całego dokumentu, więc jedno udane przejście odtwarza pełny stan i sam
+     zdejmuje baner — użytkownik nie musi nic klikać. */
+  useEffect(() => {
+    if (!dbDown || !data || !userId || loadFailedRef.current) return;
+    const iv = setInterval(() => {
+      dbSave(userId, data)
+        .then(() => { setDbDown(false); toast("Połączenie z bazą przywrócone — zmiany zapisane"); })
+        .catch(() => {});
+    }, 12000);
+    return () => clearInterval(iv);
+  }, [dbDown, data, userId]); // eslint-disable-line
+
   const update = useCallback((fn) => setData((d) => fn(d)), []);
+
+  /* Gdy baza jest niedostępna, blokujemy DODAWANIE — nowy wpis istniałby tylko
+     w pamięci karty i zniknąłby po odświeżeniu (a odświeżenie zalecamy w banerze).
+     Edycja i usuwanie zostają dostępne: to zmiany na danych, które i tak są już
+     w bazie, a każdy udany zapis wysyła cały dokument, więc dogonią bazę same. */
+  const addBlocked = useCallback(() => {
+    if (!dbDown) return false;
+    toast("Baza danych niedostępna — odśwież stronę, aby dodawać wpisy");
+    return true;
+  }, [dbDown]); // eslint-disable-line
 
   /* theme is the only thing kept on-device */
   useEffect(() => {
@@ -4593,7 +4638,7 @@ export default function App() {
   }, [data?.settings?.navOrder]);
 
   const logout = async () => {
-    try { if (data && userId) await dbSave(userId, data); } catch {}
+    try { if (data && userId && !loadFailedRef.current) await dbSave(userId, data); } catch {}
     try { await supabase.auth.signOut(); } catch {}
     enteredRef.current = null;
     setSessionUser(null); setUserId(null); setData(null); setPhase("auth");
@@ -4624,8 +4669,10 @@ export default function App() {
     return {
       main,
       toMain: (amount, cur) => amount * ((rates[cur] || 1) / (rates[main] || 1)),
+      /* podsekcje pytają o to przed otwarciem formularza dodawania */
+      dbDown, addBlocked,
     };
-  }, [data]);
+  }, [data, dbDown, addBlocked]);
 
   /* transactions ops */
   const saveTx = (tx, recurringCfg, opts) => {
@@ -4707,7 +4754,7 @@ export default function App() {
   /* keyboard shortcut Ctrl+K → new transaction */
   useEffect(() => {
     const fn = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && phase === "app") { e.preventDefault(); setTxForm({}); }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k" && phase === "app") { e.preventDefault(); if (!addBlocked()) setTxForm({}); }
     };
     window.addEventListener("keydown", fn);
     return () => window.removeEventListener("keydown", fn);
@@ -4744,7 +4791,7 @@ export default function App() {
   const navOrder = normalizeNav(data.settings.navOrder).filter((id) => NAV_META[id]);
   const content = (() => {
     switch (view) {
-      case "dashboard": return <Dashboard data={data} helpers={helpers} go={go} update={update} toast={toast} userEmail={user?.login} onAdd={() => setTxForm(true)} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
+      case "dashboard": return <Dashboard data={data} helpers={helpers} go={go} update={update} toast={toast} userEmail={user?.login} onAdd={() => { if (!addBlocked()) setTxForm(true); }} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "history": return <History data={data} helpers={helpers} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "stats": return <Stats data={data} helpers={helpers} go={go} update={update} toast={toast} />;
       case "reports": return <Reports data={data} helpers={helpers} go={go} toast={toast} confirm={confirm} update={update} />;
@@ -4819,7 +4866,7 @@ export default function App() {
               <div className="appbar-month">{periodMonthLabel}</div>
               <div style={{ flex: 1, minWidth: 12 }} />
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <button className="btn btn-primary" onClick={() => setTxForm({})}><Plus size={16} /> Nowa transakcja</button>
+                <button className="btn btn-primary" disabled={dbDown} onClick={() => { if (!addBlocked()) setTxForm({}); }}><Plus size={16} /> Nowa transakcja</button>
                 <button className="top-ic" style={{ width: 46, height: 46, borderRadius: 14 }} aria-label="Ustawienia" onClick={() => go("settings")}><SettingsIcon size={20} /></button>
                 <button className="user-chip" onClick={openProfile}>
                   <span className="appbar-avatar" style={{ background: user?.avatarColor, width: 40, height: 40, fontSize: 15, borderRadius: 13 }}>{(user?.name || "?").charAt(0).toUpperCase()}</span>
@@ -4861,6 +4908,21 @@ export default function App() {
               </div>
             </div>
           )}
+          {dbDown && (
+            <div className="db-banner no-print" role="alert">
+              <span className="db-ic"><AlertTriangle size={20} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="db-t">Błąd bazy danych</div>
+                <div className="db-d">
+                  Brak połączenia z bazą — dodawanie nowych wpisów jest zablokowane, bo nie zostałyby zapisane.
+                  Odśwież stronę, a jeśli problem nie ustąpi, spróbuj ponownie za chwilę.
+                </div>
+              </div>
+              <button className="btn btn-primary" onClick={() => window.location.reload()}>
+                <RefreshCw size={15} /> Odśwież
+              </button>
+            </div>
+          )}
           {content}
         </main>
       </div>
@@ -4874,7 +4936,8 @@ export default function App() {
               <div className="icon-badge" style={{ width: 44, height: 44, borderRadius: 14, background: "var(--grad-accent)", color: "var(--on-accent)", flexShrink: 0 }}><Wallet size={22} /></div>
               <div style={{ fontWeight: 800, fontSize: 20, letterSpacing: "-0.02em", fontFamily: "'Space Grotesk', sans-serif" }}>Sakwa</div>
             </div>
-            <button className="btn btn-primary" style={{ margin: "0 14px 14px" }} onClick={() => { setDrawer(false); setTxForm({}); }}>
+            <button className="btn btn-primary" style={{ margin: "0 14px 14px" }} disabled={dbDown}
+              onClick={() => { setDrawer(false); if (!addBlocked()) setTxForm({}); }}>
               <Plus size={16} /> Nowa transakcja
             </button>
             <div className="drawer-list">
@@ -4898,7 +4961,9 @@ export default function App() {
               <ChevronRight size={17} style={{ color: "var(--muted)", marginLeft: "auto", flexShrink: 0 }} />
             </button>
           </aside>
-          <button className="fab no-print" aria-label="Dodaj transakcję" onClick={() => setTxForm({})}>
+          <button className="fab no-print" aria-label="Dodaj transakcję" disabled={dbDown}
+            style={dbDown ? { opacity: .45, cursor: "not-allowed" } : undefined}
+            onClick={() => { if (!addBlocked()) setTxForm({}); }}>
             <span className="fab-bg" aria-hidden="true" />
             <Plus size={24} strokeWidth={2.5} />
           </button>
