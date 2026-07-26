@@ -4525,6 +4525,7 @@ export default function App() {
   const [localFull, setLocalFull] = useState(false); // nie mieści się kopia offline
   const [wipeGuard, setWipeGuard] = useState(false);  // zablokowano zapis pustki na niepustym koncie
   const startedEmptyRef = useRef(true); // czy sesja wystartowała z pustym kontem (nowy użytkownik)
+  const preflightDoneRef = useRef(false); // kontrola „czy wiersz na pewno pusty" przed 1. zapisem
   const loadFailedRef = useRef(false); // odczyt padł => nigdy nie zapisuj (patrz loadUserData)
   const [data, setData] = useState(null);
   const [view, setView] = useState("dashboard");
@@ -4870,7 +4871,16 @@ export default function App() {
     let d = null;
     let restoredOffline = false;
     try {
-      const { data: remote, updatedAt } = await dbLoad(su.id);
+      let { data: remote, updatedAt } = await dbLoad(su.id);
+      /* Brak wiersza NIE oznacza automatycznie nowego konta — RLS nie zwraca
+         nic także wtedy, gdy token sesji jest nieodświeżony. To właśnie ta
+         pomyłka („nowy użytkownik" => emptyData => zapis) skasowała konto.
+         Odświeżamy sesję i pytamy drugi raz, zanim uznamy konto za puste. */
+      if (remote == null) {
+        try { await supabase.auth.refreshSession(); } catch {}
+        const second = await dbLoad(su.id);
+        remote = second.data; updatedAt = second.updatedAt;
+      }
       loadFailedRef.current = false;
       d = remote;
       /* Niezsynchronizowane zmiany z poprzedniej sesji na tym urządzeniu.
@@ -4941,12 +4951,35 @@ export default function App() {
   useEffect(() => {
     if (!data || !userId || loadFailedRef.current) return;
     /* BEZPIECZNIK KASACJI: zapis to upsert całego dokumentu, więc jeden zapis
-       „pustki" kasuje konto. Jeśli sesja zaczęła się od danych, a teraz
-       dokument wygląda na pusty, to znaczy że coś poszło nie tak (nieudany
-       odczyt, wyścig, błąd) — nie ruszamy bazy i mówimy o tym wprost. */
-    if (!startedEmptyRef.current && looksEmptyDoc(data)) {
-      console.error("save blocked: empty document would wipe user_data", data);
-      setWipeGuard(true);
+       „pustki" kasuje konto. NIGDY nie zapisujemy pustego dokumentu — nawet na
+       koncie, które wystartowało puste: nie ma tam czego utrwalać, a to właśnie
+       ta ścieżka skasowała dane (odczyt zwrócił brak wiersza => emptyData =>
+       zapis nadpisał prawdziwy wiersz). Pierwszy realny wpis zapisze się
+       normalnie. Baner podnosimy tylko, gdy sesja MIAŁA dane i je zgubiła. */
+    if (looksEmptyDoc(data)) {
+      if (!startedEmptyRef.current) {
+        console.error("save blocked: empty document would wipe user_data", data);
+        setWipeGuard(true);
+      }
+      return;
+    }
+    /* Konto wystartowało jako „puste", ale pojawiły się dane — zanim nadpiszemy
+       wiersz, upewniamy się, że pustka nie była pomyłką odczytu (np. RLS nie
+       zwróciło wiersza przy nieodświeżonym tokenie). Jedno dodatkowe zapytanie
+       przy pierwszym zapisie. */
+    if (startedEmptyRef.current && !preflightDoneRef.current) {
+      preflightDoneRef.current = true;
+      dbLoad(userId)
+        .then(({ data: remote }) => {
+          if (remote && !looksEmptyDoc(remote)) {
+            console.error("save blocked: row already holds data, refusing to overwrite", remote);
+            loadFailedRef.current = true; // twardy stop dla wszystkich ścieżek zapisu
+            setWipeGuard(true);
+          } else {
+            startedEmptyRef.current = false; // potwierdzone: konto faktycznie puste
+          }
+        })
+        .catch(() => { preflightDoneRef.current = false; }); // spróbujemy ponownie
       return;
     }
     clearTimeout(saveTimer.current);
