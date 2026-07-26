@@ -118,6 +118,24 @@ async function dbLoad(userId) {
    Zapis do bazy to upsert CAŁEGO dokumentu, więc „kolejką" jest po prostu
    ostatni known-good stan danych. Trzymamy go w localStorage pod kluczem
    z id użytkownika i wypychamy, gdy baza wróci. */
+/* NAPRAWA USZKODZONEJ STRUKTURY.
+   Do bazy trafił kiedyś cały obiekt zwracany przez odczyt ({ data, updatedAt })
+   zamiast samych danych. Efekt: prawdziwe dane siedzą o poziom głębiej pod
+   kluczem `data`, a na wierzchu jest pusty szkielet (stąd „wyzerowane konto”)
+   — rozpoznajemy to po obcym kluczu `updatedAt` i po tablicy transakcji w
+   zagnieżdżonym obiekcie. Rozpakowujemy, a kolejny zapis utrwali już poprawny
+   kształt. Zagnieżdżenie potrafi być wielopoziomowe, jeśli powtórzyło się
+   kilka razy, więc odwijamy w pętli. */
+function unwrapNested(doc) {
+  const isPlain = (x) => x && typeof x === "object" && !Array.isArray(x);
+  const isDoc = (x) => isPlain(x) && (Array.isArray(x.transactions) || Array.isArray(x.categories));
+  let d = doc, guard = 0;
+  while (isPlain(d) && isPlain(d.data) && guard++ < 10) d = d.data;
+  if (!isDoc(d)) return doc; // nie rozpoznaliśmy dokumentu — lepiej nic nie ruszać
+  delete d.updatedAt;        // pozostałość po złym zapisie
+  return d;
+}
+
 /* Dokument „pusty" = brak jakichkolwiek danych wprowadzonych przez użytkownika.
    Kategorie pomijamy celowo: emptyData() zawiera domyślne, więc nie odróżniają
    nowego konta od skasowanego. */
@@ -4882,7 +4900,7 @@ export default function App() {
         remote = second.data; updatedAt = second.updatedAt;
       }
       loadFailedRef.current = false;
-      d = remote;
+      d = unwrapNested(remote);
       /* Niezsynchronizowane zmiany z poprzedniej sesji na tym urządzeniu.
          Rozstrzygamy po czasie: lokalna kopia wygrywa tylko wtedy, gdy jest
          nowsza od wiersza w bazie — inaczej byłaby to stara wersja, która
@@ -4890,7 +4908,7 @@ export default function App() {
       const pending = offlineRead(su.id);
       if (pending) {
         const localNewer = !updatedAt || pending.savedAt > updatedAt;
-        if (localNewer) { d = pending.data; restoredOffline = true; }
+        if (localNewer) { d = unwrapNested(pending.data); restoredOffline = true; }
         else offlineClear(su.id);
       }
     } catch (e) {
@@ -4900,7 +4918,7 @@ export default function App() {
          nic zapisywać: nie wiemy, co jest w bazie, a zapis nadpisuje całość.
          Wyjście z tego stanu to przeładowanie strony (o co prosi baner). */
       const pending = offlineRead(su.id);
-      if (pending) { d = pending.data; restoredOffline = true; }
+      if (pending) { d = unwrapNested(pending.data); restoredOffline = true; }
       loadFailedRef.current = true;
       setDbFatal(true);
     }
