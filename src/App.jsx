@@ -375,7 +375,6 @@ select.select {
 input[type="date"] { cursor: pointer; }
 input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 .amt-pill { display: inline-block; padding: 5px 11px; border-radius: 11px; font-weight: 800; font-size: 13.5px; letter-spacing: -0.01em; white-space: nowrap; }
-.hero-num-grad { background: linear-gradient(100deg, var(--info), var(--accent)); -webkit-background-clip: text; background-clip: text; color: transparent; }
 .skeleton { background: var(--surface2); border-radius: 14px; animation: pulse 1.1s ease-in-out infinite; }
 @keyframes pulse { 0%, 100% { opacity: .5; } 50% { opacity: 1; } }
 .sens { transition: filter .3s ease; }
@@ -419,7 +418,9 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 input[type="date"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; min-height: 46px; text-align: left; }
 input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .toast {
-  position: fixed; bottom: calc(100px + max(env(safe-area-inset-bottom), 12px)); left: 50%; transform: translateX(-50%);
+  /* 100px robiło miejsce dolnej nawigacji, której już nie ma — teraz tyle,
+     żeby toast minął FAB i pływający pasek Safari, ale nie wisiał w powietrzu */
+  position: fixed; bottom: calc(84px + max(env(safe-area-inset-bottom), 12px)); left: 50%; transform: translateX(-50%);
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   padding: 12px 16px; border-radius: 14px; z-index: 990; display: flex; align-items: center; gap: 14px;
   box-shadow: var(--shadow); animation: fadeIn .22s ease both; font-size: 14px; font-weight: 600;
@@ -448,10 +449,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
   .input, .select, input, textarea, select { font-size: 16px; }
 }
 @media (min-width: 1024px) { .app-scroll { min-height: 100vh; } }
-.bottom-nav {
-  position: fixed; bottom: var(--vv-off, 0px); left: 0; right: 0; z-index: 40;
-  transition: transform .28s cubic-bezier(.22,.9,.3,1);
-}
 .pin-box {
   width: 54px; height: 58px; border-radius: 14px; background: var(--surface2);
   border: 1.5px solid var(--border); display: flex; align-items: center; justify-content: center;
@@ -460,31 +457,6 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .pin-box.active { border-color: var(--accent); }
 .pin-box.err { border-color: var(--neg); }
 .pin-hidden { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; font-size: 16px; border: none; background: none; }
-.bottom-nav.nav-hidden { transform: translateY(calc(100% + var(--vv-off, 0px) + 26px)); }
-.bottom-nav {
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
-  backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  transform: translateZ(0); border-top: 1px solid var(--line);
-  display: grid; grid-template-columns: repeat(5, 1fr); padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
-}
-.bottom-nav::after {
-  content: ""; position: absolute; top: 100%; left: 0; right: 0;
-  height: calc(var(--vv-off, 0px) + 2px); background: var(--bg);
-}
-.bottom-nav button {
-  background: none; border: none; color: var(--muted); font-family: inherit; cursor: pointer;
-  display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: 10.5px; font-weight: 700;
-  padding: 8px 0; min-height: 48px; transition: color .15s ease;
-  touch-action: manipulation; -webkit-user-select: none; user-select: none;
-}
-.bottom-nav button.on { color: var(--accent); }
-.nav-plus {
-  width: 52px; height: 52px; border-radius: 18px; background: var(--accent); color: var(--on-accent);
-  display: flex; align-items: center; justify-content: center; margin: -18px auto 0;
-  box-shadow: 0 8px 22px var(--accent-dim), 0 4px 14px rgba(0,0,0,.3);
-  transition: transform .14s ease;
-}
-.nav-plus:active { transform: scale(.93); }
 .sidebar {
   width: 240px; flex-shrink: 0; padding: 24px 14px; border-right: 1px solid var(--line);
   display: flex; flex-direction: column; gap: 4px; position: sticky; top: 0; height: 100vh;
@@ -540,7 +512,6 @@ h1.page-title { font-size: 24px; font-weight: 800; letter-spacing: -0.02em; padd
 }
 .hero-balance::before { content: ""; position: absolute; inset: 0; background: var(--hero-glow); pointer-events: none; }
 .big-num { font-size: clamp(34px, 8vw, 46px); font-weight: 800; letter-spacing: -0.03em; line-height: 1.05; }
-.divider { height: 1px; background: var(--line); margin: 4px 0; }
 .to-top {
   position: fixed; left: 16px; right: auto; bottom: calc(14px + env(safe-area-inset-bottom)); z-index: 45;
 }
@@ -665,7 +636,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 .appbar-greet { flex: 1; min-width: 0; }
 .greet-k { font-size: 11.5px; font-weight: 600; color: var(--muted); }
 .greet-n { font-size: 16.5px; font-weight: 800; letter-spacing: -0.01em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.brandmark { font-family: 'Space Grotesk', sans-serif; font-weight: 700; font-size: 17px; width: 36px; height: 36px; display: flex; align-items: center; justify-content: center; border-radius: 12px; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, transparent); border: 1px solid color-mix(in srgb, var(--accent) 30%, transparent); }
 
 /* --- DESKTOP topbar --- */
 .topbar { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 2px 24px; }
@@ -696,7 +666,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 .hero-num { line-height: 1.06; }
 .hero-chips { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; justify-content: flex-start; margin-top: 12px; }
 .hero-status { justify-content: flex-start; text-align: left; margin-top: 12px; font-size: 12.5px; }
-.hero-add { margin-top: 16px; padding: 12px 20px; }
 .quick-row { display: flex; flex-direction: row; align-items: stretch; justify-content: space-between; gap: 10px; border-top: none; padding-top: 0; margin-top: 18px; }
 .hero-extra { display: none; }
 .hero-ratio { margin-top: 18px; }
@@ -704,7 +673,7 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 .hr-fill { height: 100%; border-radius: 999px; background: var(--grad-accent); transition: width .6s cubic-bezier(.22,.9,.3,1); }
 .hr-caption { display: flex; justify-content: space-between; margin-top: 7px; font-size: 11.5px; font-weight: 800; }
 @media (min-width: 1024px) {
-  .quick-row, .hero-add, .hero-ratio { display: none; }
+  .quick-row, .hero-ratio { display: none; }
   .hero-extra {
     display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
     margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line);
@@ -772,19 +741,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
-/* --- DOLNY PASEK (obraz 1): podpisy, fioletowy aktywny z podkreśleniem, uniesiony FAB --- */
-.bottom-nav {
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  backdrop-filter: blur(18px) saturate(1.2); -webkit-backdrop-filter: blur(18px) saturate(1.2);
-  border-top: 1px solid var(--line); box-shadow: 0 -12px 34px rgba(0,0,0,0.3);
-}
-.nav-lbl { display: block; font-size: 10px; font-weight: 700; margin-top: 3px; }
-.bottom-nav button { position: relative; }
-.bottom-nav button.on { color: var(--accent); }
-.bottom-nav button.on::after {
-  content: ""; position: absolute; left: 50%; transform: translateX(-50%); bottom: 2px;
-  width: 16px; height: 3px; border-radius: 3px; background: var(--grad-accent);
-}
 /* FAB = PRZEZROCZYSTY fixed wrapper; gradient/cień maluje absolutny potomek
    .fab-bg. iOS 26 analizuje tło/cień samego elementu fixed przy dolnej
    krawędzi i dokładał pod pigułkę Safari rozjaśniającą poświatę (potwierdzone
@@ -880,11 +836,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   .db-banner { flex-wrap: wrap; }
   .db-banner button { width: 100%; }
 }
-.statusbar-scrim {
-  position: fixed; top: 0; left: 0; right: 0; z-index: 30; pointer-events: none;
-  height: calc(max(env(safe-area-inset-top), 34px));
-  background: linear-gradient(180deg, var(--bg) 62%, transparent);
-}
 /* iOS 26: przy dolnej krawędzi (pas ~3px, szer. >=80%) NIE WOLNO trzymać
    ŻADNEGO elementu fixed/sticky — nawet przezroczystego. Liquid-glass pasek
    Safari próbkuje pierwszy taki element i maluje się jego tłem/fallbackiem
@@ -941,13 +892,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   .rail-dots { display: flex; justify-content: center; gap: 6px; margin-top: 10px; }
   .rail-dots span { width: 6px; height: 6px; border-radius: 999px; background: color-mix(in srgb, var(--muted) 35%, transparent); transition: all .25s ease; }
   .rail-dots span.on { width: 18px; background: var(--grad-accent); }
-}
-
-.nav-plus {
-  width: 56px; height: 56px; border-radius: 50%; margin-top: -26px;
-  background: var(--grad-accent); color: var(--on-accent);
-  box-shadow: 0 12px 30px color-mix(in srgb, var(--accent) 55%, transparent), inset 0 1.5px 0 rgba(255,255,255,0.35),
-              0 0 0 6px color-mix(in srgb, var(--bg) 85%, transparent);
 }
 
 `;
@@ -2211,17 +2155,23 @@ function Stats({ data, helpers, go, update, toast }) {
 /* ---------------- reports ---------------- */
 
 
-const escHtml = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+/* Raporty składane są jako HTML i otwierane przez document.write w oknie tej
+   samej domeny, więc KAŻDA wartość pochodząca z danych musi tędy przejść —
+   także daty, waluta i wartości trafiające do atrybutów (stąd cudzysłowy).
+   Dane potrafią pochodzić z wczytanej kopii zapasowej, czyli spoza aplikacji. */
+const escHtml = (s) => String(s ?? "")
+  .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
 
 function downloadReportFile(report, data, main, toMain, aiNote) {
   const catName = (id) => (data.categories.find((c) => c.id === id) || UNCAT).name;
   const rows = report.txs.map((t) => `<tr>
-    <td>${t.date}</td><td>${escHtml(t.name)}</td><td>${escHtml(catName(t.categoryId))}</td>
-    <td class="r ${t.type}">${t.type === "income" ? "+" : "−"}${fmtMoney(toMain(t.amount, t.currency), main)}</td></tr>`).join("");
+    <td>${escHtml(t.date)}</td><td>${escHtml(t.name)}</td><td>${escHtml(catName(t.categoryId))}</td>
+    <td class="r ${t.type === "income" ? "income" : "expense"}">${t.type === "income" ? "+" : "−"}${escHtml(fmtMoney(toMain(t.amount, t.currency), main))}</td></tr>`).join("");
   const cats = report.slices.map((s) => `<tr><td>${escHtml(s.name)}</td>
     <td class="r">${report.exp ? ((s.value / report.exp) * 100).toFixed(1) : 0}%</td>
-    <td class="r">${fmtMoney(s.value, main)}</td></tr>`).join("");
-  const html = `<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>Raport finansowy ${report.from} – ${report.to}</title>
+    <td class="r">${escHtml(fmtMoney(s.value, main))}</td></tr>`).join("");
+  const html = `<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>Raport finansowy ${escHtml(report.from)} – ${escHtml(report.to)}</title>
 <style>
   body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#16202E;margin:36px;font-size:13px}
   h1{font-size:22px;margin:0 0 4px} .sub{color:#647082;margin-bottom:22px;font-weight:600}
@@ -2240,12 +2190,12 @@ function downloadReportFile(report, data, main, toMain, aiNote) {
 </style></head><body>
 <div class="bar"><button onclick="window.print()">🖨 Drukuj / zapisz jako PDF</button></div>
 <h1>Raport finansowy</h1>
-<div class="sub">${fmtDate(report.from)} – ${fmtDate(report.to)} · waluta: ${main} · wygenerowano ${fmtDate(todayISO())}</div>
+<div class="sub">${escHtml(fmtDate(report.from))} – ${escHtml(fmtDate(report.to))} · waluta: ${escHtml(main)} · wygenerowano ${escHtml(fmtDate(todayISO()))}</div>
 <div class="cards">
-  <div class="card"><b>Przychody</b><span class="pos">${fmtMoney(report.inc, main)}</span></div>
-  <div class="card"><b>Wydatki</b><span class="neg">${fmtMoney(report.exp, main)}</span></div>
-  <div class="card"><b>Bilans</b><span class="info">${fmtMoney(report.inc - report.exp, main)}</span></div>
-  <div class="card"><b>Transakcje</b><span>${report.txs.length}</span></div>
+  <div class="card"><b>Przychody</b><span class="pos">${escHtml(fmtMoney(report.inc, main))}</span></div>
+  <div class="card"><b>Wydatki</b><span class="neg">${escHtml(fmtMoney(report.exp, main))}</span></div>
+  <div class="card"><b>Bilans</b><span class="info">${escHtml(fmtMoney(report.inc - report.exp, main))}</span></div>
+  <div class="card"><b>Transakcje</b><span>${Number(report.txs.length) || 0}</span></div>
 </div>
 ${aiNote ? `<h2>Wniosek AI</h2><p style="border:1px solid #D7DDE7;border-radius:12px;padding:12px 16px;line-height:1.6;margin:0 0 26px">${escHtml(aiNote)}</p>` : ""}
 ${report.slices.length ? `<h2>Podział wydatków wg kategorii</h2><table><thead><tr><th>Kategoria</th><th class="r">Udział</th><th class="r">Kwota</th></tr></thead><tbody>${cats}</tbody></table>` : ""}
@@ -2263,12 +2213,12 @@ ${report.slices.length ? `<h2>Podział wydatków wg kategorii</h2><table><thead>
 
 function snapshotHtml(snap, autoPrint) {
   const rows = snap.rows.map((r) => `<tr>
-    <td>${r.date}</td><td>${escHtml(r.name)}</td><td>${escHtml(r.cat)}</td>
-    <td class="r ${r.type}">${r.type === "income" ? "+" : "−"}${fmtMoney(r.amt, snap.main)}</td></tr>`).join("");
+    <td>${escHtml(r.date)}</td><td>${escHtml(r.name)}</td><td>${escHtml(r.cat)}</td>
+    <td class="r ${r.type === "income" ? "income" : "expense"}">${r.type === "income" ? "+" : "−"}${escHtml(fmtMoney(r.amt, snap.main))}</td></tr>`).join("");
   const cats = snap.slices.map((s) => `<tr><td>${escHtml(s.name)}</td>
     <td class="r">${snap.exp ? ((s.value / snap.exp) * 100).toFixed(1) : 0}%</td>
-    <td class="r">${fmtMoney(s.value, snap.main)}</td></tr>`).join("");
-  const html = `<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>Raport finansowy ${snap.from} – ${snap.to}</title>
+    <td class="r">${escHtml(fmtMoney(s.value, snap.main))}</td></tr>`).join("");
+  const html = `<!DOCTYPE html><html lang="pl"><head><meta charset="utf-8"><title>Raport finansowy ${escHtml(snap.from)} – ${escHtml(snap.to)}</title>
 <style>
   body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;color:#16202E;margin:36px;font-size:13px}
   h1{font-size:22px;margin:0 0 4px} .sub{color:#647082;margin-bottom:22px;font-weight:600}
@@ -2287,12 +2237,12 @@ function snapshotHtml(snap, autoPrint) {
 </style></head><body>
 <div class="bar"><button onclick="window.print()">🖨 Drukuj / zapisz jako PDF</button></div>
 <h1>Raport finansowy</h1>
-<div class="sub">${fmtDate(snap.from)} – ${fmtDate(snap.to)} · waluta: ${snap.main} · wygenerowano ${fmtDate(snap.createdAt.slice(0, 10))} o ${fmtTime(snap.createdAt)}</div>
+<div class="sub">${escHtml(fmtDate(snap.from))} – ${escHtml(fmtDate(snap.to))} · waluta: ${escHtml(snap.main)} · wygenerowano ${escHtml(fmtDate(snap.createdAt.slice(0, 10)))} o ${escHtml(fmtTime(snap.createdAt))}</div>
 <div class="cards">
-  <div class="card"><b>Przychody</b><span class="pos">${fmtMoney(snap.inc, snap.main)}</span></div>
-  <div class="card"><b>Wydatki</b><span class="neg">${fmtMoney(snap.exp, snap.main)}</span></div>
-  <div class="card"><b>Bilans</b><span class="info">${fmtMoney(snap.inc - snap.exp, snap.main)}</span></div>
-  <div class="card"><b>Transakcje</b><span>${snap.count}</span></div>
+  <div class="card"><b>Przychody</b><span class="pos">${escHtml(fmtMoney(snap.inc, snap.main))}</span></div>
+  <div class="card"><b>Wydatki</b><span class="neg">${escHtml(fmtMoney(snap.exp, snap.main))}</span></div>
+  <div class="card"><b>Bilans</b><span class="info">${escHtml(fmtMoney(snap.inc - snap.exp, snap.main))}</span></div>
+  <div class="card"><b>Transakcje</b><span>${Number(snap.count) || 0}</span></div>
 </div>
 ${snap.aiNote ? `<h2>Wniosek AI</h2><p style="border:1px solid #D7DDE7;border-radius:12px;padding:12px 16px;line-height:1.6;margin:0 0 26px">${escHtml(snap.aiNote)}</p>` : ""}
 ${snap.slices.length ? `<h2>Podział wydatków wg kategorii</h2><table><thead><tr><th>Kategoria</th><th class="r">Udział</th><th class="r">Kwota</th></tr></thead><tbody>${cats}</tbody></table>` : ""}
@@ -3560,6 +3510,78 @@ function transactionsCsv(data, toMain, main) {
   return "﻿" + [head, ...rows].map((r) => r.map(csvCell).join(";")).join("\r\n");
 }
 
+/* Wczytana kopia to plik z zewnątrz — traktujemy ją jak dane niezaufane.
+   Przycinamy do znanych pól i typów, żeby do stanu (a stąd do raportów HTML
+   i do bazy) nie trafiły obiekty o dowolnym kształcie. */
+function sanitizeImported(inc) {
+  const str = (v, max = 200) => (typeof v === "string" ? v.slice(0, max) : "");
+  const num = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const isoDate = (v) => (/^\d{4}-\d{2}-\d{2}$/.test(v) ? v : todayISO());
+  const arr = (v) => (Array.isArray(v) ? v : []);
+  const id = (v) => (typeof v === "string" && v ? v.slice(0, 64) : uid());
+  const cur = (v) => (CURRENCIES.includes(v) ? v : "PLN");
+
+  return {
+    transactions: arr(inc.transactions).map((t) => ({
+      id: id(t?.id), type: t?.type === "income" ? "income" : "expense",
+      name: str(t?.name, 120), amount: num(t?.amount), currency: cur(t?.currency),
+      categoryId: str(t?.categoryId, 64), date: isoDate(t?.date), note: str(t?.note, 500),
+      ...(t?.recurringId ? { recurringId: str(t.recurringId, 64) } : {}),
+      ...(t?.refuelId ? { refuelId: str(t.refuelId, 64) } : {}),
+    })),
+    categories: arr(inc.categories).map((c) => ({
+      id: id(c?.id), name: str(c?.name, 60),
+      type: c?.type === "income" ? "income" : "expense",
+      icon: ICON_NAMES.includes(c?.icon) ? c.icon : "CircleHelp",
+      color: /^#[0-9a-f]{3,8}$/i.test(c?.color) ? c.color : "#94A3B8",
+      builtin: !!c?.builtin,
+    })),
+    recurring: arr(inc.recurring).map((r) => ({
+      id: id(r?.id), name: str(r?.name, 120), amount: num(r?.amount), currency: cur(r?.currency),
+      categoryId: str(r?.categoryId, 64), type: r?.type === "income" ? "income" : "expense",
+      day: Math.min(28, Math.max(1, Math.round(num(r?.day)) || 1)),
+      startDate: isoDate(r?.startDate), paused: !!r?.paused,
+    })),
+    cars: arr(inc.cars).map((c) => ({ id: id(c?.id), name: str(c?.name, 80), fuel: str(c?.fuel, 30), tank: num(c?.tank) })),
+    stations: arr(inc.stations).map((s) => ({ id: id(s?.id), name: str(s?.name, 80) })),
+    refuels: arr(inc.refuels).map((r) => ({
+      id: id(r?.id), carId: str(r?.carId, 64), stationId: str(r?.stationId, 64),
+      liters: num(r?.liters), cost: num(r?.cost), date: isoDate(r?.date),
+      ...(r?.distance != null ? { distance: num(r.distance) } : {}),
+      ...(r?.odometer != null ? { odometer: num(r.odometer) } : {}),
+    })),
+    goals: arr(inc.goals).map((g) => ({
+      id: id(g?.id), name: str(g?.name, 120), target: num(g?.target), saved: num(g?.saved),
+      deadline: typeof g?.deadline === "string" ? isoDate(g.deadline) : null,
+      entries: arr(g?.entries).map((e) => ({ id: id(e?.id), amount: num(e?.amount), date: isoDate(e?.date) })),
+    })),
+    reports: arr(inc.reports).slice(0, 200),
+    cycles: arr(inc.cycles).filter((c) => typeof c === "string").map((c) => c.slice(0, 30)),
+    budgets: (() => {
+      const out = {};
+      Object.entries(inc.budgets || {}).forEach(([m, lims]) => {
+        if (!/^\d{4}-\d{2}$/.test(m) || !lims || typeof lims !== "object") return;
+        const row = {};
+        Object.entries(lims).forEach(([cid, v]) => { if (Number.isFinite(Number(v))) row[String(cid).slice(0, 64)] = Number(v); });
+        out[m] = row;
+      });
+      return out;
+    })(),
+    settings: {
+      mainCurrency: cur(inc.settings?.mainCurrency),
+      rates: (() => {
+        const r = { ...DEFAULT_RATES };
+        Object.entries(inc.settings?.rates || {}).forEach(([k, v]) => { if (CURRENCIES.includes(k) && Number(v) > 0) r[k] = Number(v); });
+        return r;
+      })(),
+      theme: THEMES.some((t) => t.id === inc.settings?.theme) ? inc.settings.theme : "dark",
+      navOrder: normalizeNav(Array.isArray(inc.settings?.navOrder) ? inc.settings.navOrder : DEFAULT_NAV),
+      hideBalance: !!inc.settings?.hideBalance,
+      ...(typeof inc.settings?.incognitoPinHash === "string" ? { incognitoPinHash: inc.settings.incognitoPinHash.slice(0, 128) } : {}),
+    },
+  };
+}
+
 function BackupManager({ data, helpers, update, toast, confirm, back }) {
   const { toMain, main } = helpers;
   const fileRef = useRef(null);
@@ -3595,15 +3617,8 @@ function BackupManager({ data, helpers, update, toast, confirm, back }) {
       confirm(
         { title: "Wczytać kopię zapasową?", desc: `Plik zawiera ${counts}. Wszystkie obecne dane zostaną nimi ZASTĄPIONE — tej operacji nie da się cofnąć.`, danger: true, confirmLabel: "Zastąp dane" },
         () => {
-          update((d) => {
-            const base = emptyData();
-            return {
-              ...base,
-              ...incoming,
-              settings: { ...base.settings, ...(incoming.settings || {}), rates: { ...DEFAULT_RATES, ...(incoming.settings?.rates || {}) } },
-              profile: incoming.profile || d.profile, // profil z pliku, a jak go nie ma — obecny
-            };
-          });
+          const clean = sanitizeImported(incoming);
+          update((d) => ({ ...emptyData(), ...clean, profile: d.profile }));
           toast("Dane wczytane z kopii zapasowej");
         });
     } catch {
@@ -4549,12 +4564,9 @@ export default function App() {
   const [view, setView] = useState("dashboard");
   const [settingsSub, setSettingsSub] = useState(null);
   const [txForm, setTxForm] = useState(null);       // null | {} | tx
-  const [quickAdd, setQuickAdd] = useState(false);
   const [openRefuel, setOpenRefuel] = useState(false);
   const [toastState, setToastState] = useState(null); // {msg, action, onAction}
   const [navHidden, setNavHidden] = useState(false);
-  const navHiddenRef = useRef(false);
-  useEffect(() => { navHiddenRef.current = navHidden; }, [navHidden]);
   const [conf, setConf] = useState(null);
   const toastTimer = useRef(null);
   const isDesktop = useMedia("(min-width: 1024px)");
@@ -4694,62 +4706,6 @@ export default function App() {
     };
   }, [phase]); // eslint-disable-line
 
-  /* iOS Safari: keep bottom UI above the floating address bar.
-     Instead of guessing from viewport math, measure the nav's real position vs the
-     visible viewport bottom and lift it by exactly the covered amount (self-correcting). */
-  const navRef = useRef(null);
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    let raf = null, pending = null, pendTimer = null;
-    const upd = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = null;
-        const nav = navRef.current;
-        if (!nav) { document.documentElement.style.setProperty("--vv-off", "0px"); return; }
-        if (navHiddenRef.current) return; // nie mierz schowanego navbara
-        const ae = document.activeElement;
-        if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return; // trwa pisanie — nie ruszaj
-        // klawiatura otwarta lub w trakcie animacji => viewport kłamie, nie mierz
-        if (vv.height < window.innerHeight - 120) { pending = null; return; }
-        const visualBottom = vv.offsetTop + vv.height;
-        const rect = nav.getBoundingClientRect();
-        const cur = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--vv-off")) || 0;
-        let next = cur + Math.round(rect.bottom - visualBottom);
-        next = Math.max(0, next);
-        if (next > 170) next = 0;
-        if (Math.abs(next - cur) <= 2) { pending = null; return; }
-        // zatwierdź dopiero, gdy DWA pomiary z rzędu dają to samo
-        // (odfiltrowuje klatki złapane w połowie animacji navbara/klawiatury)
-        if (pending !== null && Math.abs(pending - next) <= 2) {
-          pending = null;
-          document.documentElement.style.setProperty("--vv-off", next + "px");
-        } else {
-          pending = next;
-          clearTimeout(pendTimer);
-          pendTimer = setTimeout(upd, 150);
-        }
-      });
-    };
-    const updSoon = () => setTimeout(upd, 420); // po zamknięciu klawiatury, po animacji
-    upd();
-    const t1 = setTimeout(upd, 250);
-    const t2 = setTimeout(upd, 900);
-    vv.addEventListener("resize", upd);
-    window.addEventListener("orientationchange", upd);
-    window.addEventListener("focusout", updSoon);
-    const navEl = navRef.current;
-    if (navEl) navEl.addEventListener("transitionend", upd);
-    return () => {
-      clearTimeout(t1); clearTimeout(t2); clearTimeout(pendTimer);
-      if (raf) cancelAnimationFrame(raf);
-      vv.removeEventListener("resize", upd);
-      window.removeEventListener("orientationchange", upd);
-      window.removeEventListener("focusout", updSoon);
-      if (navEl) navEl.removeEventListener("transitionend", upd);
-    };
-  }, [phase, isDesktop]);
 
   /* iOS: after the keyboard closes, Safari can leave the visual viewport shifted —
      snap it back so pages always start exactly at the top */
@@ -5255,12 +5211,6 @@ export default function App() {
     }
   })();
 
-  const barIds = navOrder.slice(0, 4);
-  const mobileTabs = [
-    { id: barIds[0] }, { id: barIds[1] }, { id: "__add" }, { id: barIds[2] }, { id: barIds[3] },
-  ].filter((t) => t.id);
-  const activeTab = barIds.includes(view) ? view : (barIds.includes("more") && !barIds.includes(view) ? "more" : null);
-
   return (
     <div className={`fin-root ${data.settings.hideBalance ? "incognito" : ""}`} data-theme={theme} data-nav-hidden={navHidden && !isDesktop ? "1" : "0"}>
       <style>{CSS}</style>
@@ -5300,7 +5250,9 @@ export default function App() {
             )}
           </aside>
         )}
-        <main style={{ flex: 1, minWidth: 0, maxWidth: 1600, margin: "0 auto", padding: isDesktop ? "26px 34px 48px" : "calc(max(env(safe-area-inset-top), 34px) + 10px) 16px calc(104px + max(env(safe-area-inset-bottom), 12px))" }}>
+        <main style={{ flex: 1, minWidth: 0, maxWidth: 1600, margin: "0 auto", /* dolny margines: tyle, ile trzeba pod FAB i pasek Safari — 104px pochodziło
+   z czasów dolnej nawigacji, której już nie ma (zostawała pusta przestrzeń) */
+          padding: isDesktop ? "26px 34px 48px" : "calc(max(env(safe-area-inset-top), 34px) + 10px) 16px calc(24px + max(env(safe-area-inset-bottom), 12px))" }}>
           {isDesktop && (
             <div className="topbar no-print">
               <div className="topbar-greet" style={{ display: "flex", alignItems: "center", gap: 13 }}>
@@ -5446,26 +5398,6 @@ export default function App() {
           </button>
         </>
       )}
-
-      <Sheet open={quickAdd} onClose={() => setQuickAdd(false)} title="Co chcesz dodać?">
-        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {[
-            { icon: Wallet, label: "Transakcja", desc: "Wydatek lub przychód", color: "var(--accent)", act: () => { setQuickAdd(false); setTxForm({}); } },
-            { icon: Fuel, label: "Tankowanie", desc: "Paliwo do samochodu", color: "#F97316", act: () => { setQuickAdd(false); go("fuel"); setOpenRefuel(true); } },
-            { icon: Target, label: "Wpłata na cel", desc: "Odłóż na oszczędności", color: "var(--violet)", act: () => { setQuickAdd(false); go("goals"); } },
-          ].map((o) => (
-            <button key={o.label} className="card row-press" onClick={o.act}
-              style={{ padding: 16, display: "flex", alignItems: "center", gap: 14, cursor: "pointer", fontFamily: "inherit", color: "var(--text)", textAlign: "left", width: "100%" }}>
-              <div className="icon-badge" style={{ background: "var(--surface2)", color: o.color }}><o.icon size={20} /></div>
-              <div style={{ flex: 1 }}>
-                <div style={{ fontWeight: 800, fontSize: 15 }}>{o.label}</div>
-                <div style={{ color: "var(--muted)", fontSize: 12.5, fontWeight: 600 }}>{o.desc}</div>
-              </div>
-              <ChevronRight size={17} style={{ color: "var(--muted)" }} />
-            </button>
-          ))}
-        </div>
-      </Sheet>
 
       <Sheet open={!!txForm} onClose={() => setTxForm(null)} title={txForm?.id ? "Edytuj transakcję" : "Nowa transakcja"}>
         {txForm && (
