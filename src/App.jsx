@@ -118,6 +118,19 @@ async function dbLoad(userId) {
    Zapis do bazy to upsert CAŁEGO dokumentu, więc „kolejką" jest po prostu
    ostatni known-good stan danych. Trzymamy go w localStorage pod kluczem
    z id użytkownika i wypychamy, gdy baza wróci. */
+/* Dokument „pusty" = brak jakichkolwiek danych wprowadzonych przez użytkownika.
+   Kategorie pomijamy celowo: emptyData() zawiera domyślne, więc nie odróżniają
+   nowego konta od skasowanego. */
+const looksEmptyDoc = (d) => !d || (
+  (d.transactions?.length ?? 0) === 0 &&
+  (d.refuels?.length ?? 0) === 0 &&
+  (d.cars?.length ?? 0) === 0 &&
+  (d.goals?.length ?? 0) === 0 &&
+  (d.recurring?.length ?? 0) === 0 &&
+  (d.reports?.length ?? 0) === 0 &&
+  Object.keys(d.budgets || {}).length === 0
+);
+
 const offlineKey = (userId) => `sakwa-offline-${userId}`;
 function offlineRead(userId) {
   try {
@@ -4510,6 +4523,8 @@ export default function App() {
   const [dbDown, setDbDown] = useState(false);   // zapis nie przechodzi => tryb offline
   const [dbFatal, setDbFatal] = useState(false); // odczyt padł => tylko podgląd, wymagane odświeżenie
   const [localFull, setLocalFull] = useState(false); // nie mieści się kopia offline
+  const [wipeGuard, setWipeGuard] = useState(false);  // zablokowano zapis pustki na niepustym koncie
+  const startedEmptyRef = useRef(true); // czy sesja wystartowała z pustym kontem (nowy użytkownik)
   const loadFailedRef = useRef(false); // odczyt padł => nigdy nie zapisuj (patrz loadUserData)
   const [data, setData] = useState(null);
   const [view, setView] = useState("dashboard");
@@ -4914,6 +4929,8 @@ export default function App() {
     } catch {}
     const generated = generateRecurringTx(d);
     if (generated.length) d = { ...d, transactions: [...d.transactions, ...generated] };
+    /* punkt odniesienia dla bezpiecznika kasacji: z czym sesja wystartowała */
+    startedEmptyRef.current = looksEmptyDoc(d);
     setData(d);
     if (restoredOffline) setTimeout(() => toast("Przywrócono zmiany zapisane offline na tym urządzeniu"), 400);
     else if (generated.length) setTimeout(() => toast(`Wygenerowano ${generated.length} ${generated.length === 1 ? "płatność cykliczną" : "płatności cyklicznych"}`), 400);
@@ -4923,6 +4940,15 @@ export default function App() {
   const saveTimer = useRef(null);
   useEffect(() => {
     if (!data || !userId || loadFailedRef.current) return;
+    /* BEZPIECZNIK KASACJI: zapis to upsert całego dokumentu, więc jeden zapis
+       „pustki" kasuje konto. Jeśli sesja zaczęła się od danych, a teraz
+       dokument wygląda na pusty, to znaczy że coś poszło nie tak (nieudany
+       odczyt, wyścig, błąd) — nie ruszamy bazy i mówimy o tym wprost. */
+    if (!startedEmptyRef.current && looksEmptyDoc(data)) {
+      console.error("save blocked: empty document would wipe user_data", data);
+      setWipeGuard(true);
+      return;
+    }
     clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       dbSave(userId, data)
@@ -5277,7 +5303,22 @@ export default function App() {
               </div>
             </div>
           )}
-          {(dbFatal || localFull) ? (
+          {wipeGuard ? (
+            <div className="db-banner no-print" role="alert">
+              <span className="db-ic"><AlertTriangle size={20} /></span>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="db-t">Zapis wstrzymany — ochrona danych</div>
+                <div className="db-d">
+                  Aplikacja wczytała pusty stan, choć na koncie były dane. Zapisywanie zostało wyłączone,
+                  żeby nie skasować tego, co jest w bazie. <b>Nie dodawaj nic</b> — odśwież stronę.
+                  Jeśli po odświeżeniu dane nadal nie wrócą, przywróć je z kopii zapasowej.
+                </div>
+              </div>
+              <button className="btn btn-primary" onClick={() => window.location.reload()}>
+                <RefreshCw size={15} /> Odśwież
+              </button>
+            </div>
+          ) : (dbFatal || localFull) ? (
             <div className="db-banner no-print" role="alert">
               <span className="db-ic"><AlertTriangle size={20} /></span>
               <div style={{ flex: 1, minWidth: 0 }}>
