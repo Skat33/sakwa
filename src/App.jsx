@@ -1273,13 +1273,13 @@ function TransactionForm({ data, initial, onSave, onClose }) {
               {data.cars.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
             <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
-              Koszt doliczy się do tego auta w sekcji Paliwo → Mechanika.
+              Koszt doliczy się do tego auta w sekcji Auto → Mechanika.
             </div>
           </Field>
         ) : (
           <div className="card" style={{ padding: 12, marginBottom: 14, background: "var(--surface2)", boxShadow: "none",
             fontSize: 12.5, fontWeight: 600, color: "var(--muted)", lineHeight: 1.5 }}>
-            Nie masz jeszcze żadnego auta — dodaj je w sekcji Paliwo, a wtedy wydatki z tej kategorii będą się do niego doliczać.
+            Nie masz jeszcze żadnego auta — dodaj je w sekcji Auto, a wtedy wydatki z tej kategorii będą się do niego doliczać.
           </div>
         )
       )}
@@ -3108,7 +3108,7 @@ function Reports({ data, helpers, go, toast, confirm, update }) {
   );
 }
 
-function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefuel, userId }) {
+function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefuel, userId, onEditTx, onDeleteTx }) {
   const { main, addDisabled, addBlocked } = helpers;
   const [activeCar, setActiveCar] = useState(data.cars[0]?.id || null);
   const [carForm, setCarForm] = useState(null);
@@ -3213,7 +3213,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-        <h1 className="page-title" style={{ margin: 0 }}>Paliwo</h1>
+        <h1 className="page-title" style={{ margin: 0 }}>Auto</h1>
         {!isMobileF && (
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="btn btn-ghost" disabled={addDisabled} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
@@ -3290,7 +3290,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           </div>
 
           {tab === "mech" ? (
-            <Mechanics data={data} car={car} helpers={helpers} update={update} toast={toast} confirm={confirm} userId={userId} />
+            <Mechanics data={data} car={car} helpers={helpers} update={update} toast={toast} confirm={confirm} userId={userId} onEditTx={onEditTx} onDeleteTx={onDeleteTx} />
           ) : (<>
 
           {car && (
@@ -3524,7 +3524,7 @@ function DueCard({ icon: Icon, label, lastISO, months, hint }) {
   );
 }
 
-function Mechanics({ data, car, helpers, update, toast, confirm, userId }) {
+function Mechanics({ data, car, helpers, update, toast, confirm, userId, onEditTx, onDeleteTx }) {
   const { toMain, main } = helpers;
   const [form, setForm] = useState(null); // wpis serwisowy w edycji
 
@@ -3545,6 +3545,16 @@ function Mechanics({ data, car, helpers, update, toast, confirm, userId }) {
   const services = useMemo(
     () => [...(car?.services || [])].sort((a, b) => b.date.localeCompare(a.date)),
     [car]);
+
+  /* Wydatki tego auta z kategorii „Samochód”. Tankowania mają własną historię
+     w zakładce Paliwo, więc świadomie ich tu NIE pokazujemy — inaczej te same
+     kwoty widniałyby w dwóch miejscach. */
+  const carTxs = useMemo(
+    () => data.transactions.filter((t) => t.carId === car?.id)
+      .sort((a, b) => b.date.localeCompare(a.date) || b.id.localeCompare(a.id)),
+    [data.transactions, car]);
+  const [allTxOpen, setAllTxOpen] = useState(false);
+  const txLimit = 5;
 
   const saveService = (svc) => {
     update((d) => ({
@@ -3585,6 +3595,55 @@ function Mechanics({ data, car, helpers, update, toast, confirm, userId }) {
         <DueCard icon={Landmark} label="Ubezpieczenie" lastISO={car.insuranceLast} months={car.insuranceMonths}
           hint="Podaj datę początku polisy w danych auta, a policzymy koniec ochrony." />
       </div>
+
+      {(() => {
+        const renderTx = (t) => {
+          const cat = data.categories.find((c) => c.id === t.categoryId);
+          return (
+            <div key={t.id} className="tx-row row-press" style={{ cursor: onEditTx ? "pointer" : "default" }}
+              onClick={() => onEditTx?.(t)} role={onEditTx ? "button" : undefined} tabIndex={onEditTx ? 0 : undefined}
+              onKeyDown={(e) => { if (onEditTx && (e.key === "Enter" || e.key === " ")) { e.preventDefault(); onEditTx(t); } }}>
+              <CatIcon cat={cat} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 14, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{t.name}</div>
+                <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+                  {fmtDate(t.date)}{t.note ? ` · ${t.note}` : ""}
+                </div>
+              </div>
+              <div className="sens" style={{ fontWeight: 800, color: "var(--neg)" }}>−{fmtMoney(toMain(t.amount, t.currency), main)}</div>
+              {onDeleteTx && (
+                <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Usuń wydatek"
+                  onClick={(e) => { e.stopPropagation(); onDeleteTx(t); }}><Trash2 size={15} /></button>
+              )}
+            </div>
+          );
+        };
+        return (
+          <div className="card" style={{ padding: 14 }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 8, padding: "4px 6px" }}>
+              <div style={{ fontWeight: 800 }}>Wydatki na auto</div>
+              {carTxs.length > txLimit && (
+                <button className="btn btn-ghost" style={{ padding: "7px 12px", fontSize: 12.5 }} onClick={() => setAllTxOpen(true)}>
+                  Wszystkie ({carTxs.length}) <ChevronRight size={14} />
+                </button>
+              )}
+            </div>
+            {carTxs.length === 0 ? (
+              <div style={{ padding: "6px 6px 4px", fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>
+                Brak wydatków przypisanych do tego auta. Dodając transakcję, wybierz kategorię <b style={{ color: "var(--text)" }}>Samochód</b> i wskaż pojazd — pojawi się tutaj.
+                Tankowania mają osobną historię w zakładce Paliwo.
+              </div>
+            ) : (
+              <>
+                <div className="tx-list">{carTxs.slice(0, txLimit).map(renderTx)}</div>
+                <Sheet open={allTxOpen} onClose={() => setAllTxOpen(false)} title={`Wydatki na auto (${carTxs.length})`} wide>
+                  <div className="tx-list">{carTxs.map(renderTx)}</div>
+                </Sheet>
+              </>
+            )}
+          </div>
+        );
+      })()}
 
       <div className="card" style={{ padding: 14 }}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, padding: "4px 6px" }}>
@@ -5081,7 +5140,7 @@ const TILE_EXTRA = {
   dashboard: { desc: "Saldo, statystyki, budżety", color: "#34E0A1" },
   history: { desc: "Wszystkie transakcje i filtry", color: "#5EA0FF" },
   stats: { desc: "Wykresy, heatmapa, analiza", color: "#2DD4BF" },
-  fuel: { desc: "Auta, tankowania, spalanie", color: "#F97316" },
+  fuel: { desc: "Tankowania, spalanie i koszty auta", color: "#F97316" },
   goals: { desc: "Oszczędzanie na marzenia", color: "#34E0A1" },
   budgets: { desc: "Limity wydatków na miesiąc", color: "#FFD166" },
   summary: { desc: "Miesiąc po miesiącu: wpłaty, wydatki, oszczędności", color: "#5EA0FF" },
@@ -5227,7 +5286,7 @@ const NAV_META = {
   stats: { icon: BarChart3, label: "Statystyki" },
   more: { icon: LayoutGrid, label: "Więcej" },
   reports: { icon: FileText, label: "Raporty" },
-  fuel: { icon: Fuel, label: "Paliwo" },
+  fuel: { icon: CarFront, label: "Auto" },
   goals: { icon: Target, label: "Cele" },
   budgets: { icon: Landmark, label: "Budżety" },
   summary: { icon: CalendarDays, label: "Podsumowanie" },
@@ -6012,7 +6071,7 @@ export default function App() {
       case "history": return <History data={data} helpers={helpers} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "stats": return <Stats data={data} helpers={helpers} go={go} update={update} toast={toast} />;
       case "reports": return <Reports data={data} helpers={helpers} go={go} toast={toast} confirm={confirm} update={update} />;
-      case "fuel": return <Fuel_ data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} openRefuel={openRefuel} setOpenRefuel={setOpenRefuel} userId={userId} />;
+      case "fuel": return <Fuel_ data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} openRefuel={openRefuel} setOpenRefuel={setOpenRefuel} userId={userId} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "goals": return <Goals data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "budgets": return <Budgets data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "summary": return <Summary data={data} helpers={helpers} />;
