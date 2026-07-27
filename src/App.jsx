@@ -532,6 +532,17 @@ input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .scroll-x { display: flex; gap: 12px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: none; }
 .scroll-x::-webkit-scrollbar { display: none; }
 .car-carousel { scroll-snap-type: x mandatory; scroll-padding-left: 2px; }
+/* kafelek „+" na końcu karuzeli — jedyne miejsce, w którym dodaje się auto */
+.car-add {
+  flex: 0 0 auto; align-self: stretch; min-height: 100%; width: 54px; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  border: 1.5px dashed var(--line); border-radius: 16px;
+  background: transparent; color: var(--muted); font-family: inherit;
+  transition: border-color .15s ease, color .15s ease, background .15s ease;
+}
+.car-add:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.car-add:active:not(:disabled) { transform: scale(.95); }
+.car-add:disabled { opacity: .45; cursor: not-allowed; }
 .car-carousel > * { scroll-snap-align: start; }
 .dots { display: flex; gap: 6px; justify-content: center; margin-top: 10px; }
 .dots span { width: 6px; height: 6px; border-radius: 3px; background: var(--surface3); transition: width .25s ease, background .25s ease; }
@@ -889,9 +900,17 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 .ctl-period.on .ctl-period-ic, .ctl-period.on .ctl-period-lbl { color: var(--accent); }
 .ctl-period-pick { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
 .ctl-period-pick select {
-  appearance: none; -webkit-appearance: none; background: none; border: none; outline: none;
+  appearance: none; -webkit-appearance: none; background: transparent; border: none; outline: none;
   font-family: inherit; font-size: 15px; font-weight: 800; color: var(--text);
   text-align: right; padding: 4px 0; cursor: pointer; max-width: 100%;
+}
+.ctl-period-pick select:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
+/* Rozwiniętą listę rysuje system i dziedziczy ona kolory z selecta — przy
+   przezroczystym tle wychodził jasny tekst na jasnym menu (nieczytelne).
+   Kolory ustawiamy więc wprost na opcjach. */
+.ctl-period-pick option {
+  background: var(--surface); color: var(--text);
+  font-family: inherit; font-size: 14px; font-weight: 700;
 }
 .ctl-period.on .ctl-period-pick select { color: var(--accent); }
 .ctl-period-pick svg { color: var(--muted); flex-shrink: 0; pointer-events: none; }
@@ -3158,6 +3177,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
   const [period, setPeriod] = useState("all");
   const [tab, setTab] = useState("fuel"); // "fuel" | "mech"
   const [editRefuel, setEditRefuel] = useState(null);
+  const [svcForm, setSvcForm] = useState(null);   // wpis serwisowy, otwierany też z nagłówka
   const [allRefuelsOpen, setAllRefuelsOpen] = useState(false);
   const [allStationsOpen, setAllStationsOpen] = useState(false);
   const isMobileF = useMedia("(max-width: 767px)");
@@ -3248,29 +3268,27 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
     { title: "Usunąć tankowanie?", desc: `Tankowanie z ${fmtDate(r.date)} (${r.liters} l za ${fmtMoney(r.cost, main)}) zostanie trwale usunięte.`, danger: true, confirmLabel: "Usuń" },
     () => { update((d) => ({ ...d, refuels: d.refuels.filter((x) => x.id !== r.id), transactions: d.transactions.filter((t) => t.refuelId !== r.id) })); toast("Tankowanie usunięte z historii"); });
 
+  const primaryAdd = tab === "mech" ? (
+    <button className="btn btn-primary" style={isMobileF ? { width: "100%", marginTop: -6 } : undefined}
+      disabled={addDisabled || !car} onClick={() => { if (!addBlocked()) setSvcForm({}); }}>
+      <Wrench size={16} /> Dodaj serwis
+    </button>
+  ) : (
+    <button className="btn btn-primary" style={isMobileF ? { width: "100%", marginTop: -6 } : undefined}
+      disabled={addDisabled || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
+      <Droplets size={16} /> Dodaj tankowanie
+    </button>
+  );
+
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <h1 className="page-title" style={{ margin: 0 }}>Auto</h1>
-        {!isMobileF && (
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn btn-ghost" disabled={addDisabled} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
-            <button className="btn btn-ghost" disabled={addDisabled} onClick={() => { if (!addBlocked()) setStationForm({}); }}><Plus size={15} /> Stacja</button>
-            <button className="btn btn-primary" disabled={addDisabled || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
-              <Droplets size={16} /> Dodaj tankowanie
-            </button>
-          </div>
-        )}
+        {/* Auto dodaje się plusem w karuzeli, stację przy rankingu stacji — tu
+            zostaje jeden przycisk, i to ten, który pasuje do zakładki. */}
+        {!isMobileF && <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>{primaryAdd}</div>}
       </div>
-      {isMobileF && (
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: -6 }}>
-          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={addDisabled} onClick={() => { if (!addBlocked()) setCarForm({}); }}><Plus size={15} /> Auto</button>
-          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={addDisabled} onClick={() => { if (!addBlocked()) setStationForm({}); }}><Plus size={15} /> Stacja</button>
-          <button className="btn btn-primary" style={{ width: "100%", gridColumn: "1 / -1" }} disabled={addDisabled || !data.cars.length || !data.stations.length} onClick={() => { if (!addBlocked()) setOpenRefuel(true); }}>
-            <Droplets size={16} /> Dodaj tankowanie
-          </button>
-        </div>
-      )}
+      {isMobileF && primaryAdd}
 
       {data.cars.length === 0 ? (
         <EmptyState icon={CarFront} title="Brak samochodów" desc="Dodaj pierwszy samochód, aby śledzić tankowania, spalanie i koszty."
@@ -3289,6 +3307,10 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                   </div>
                 </button>
               ))}
+              <button className="car-add" aria-label="Dodaj samochód" disabled={addDisabled}
+                onClick={() => { if (!addBlocked()) setCarForm({}); }}>
+                <Plus size={20} />
+              </button>
             </div>
             {isMobileF && data.cars.length > 2 && (
               <div className="dots" aria-hidden="true">
@@ -3332,7 +3354,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           </div>
 
           {tab === "mech" ? (
-            <Mechanics data={data} car={car} helpers={helpers} update={update} toast={toast} confirm={confirm} userId={userId} onEditTx={onEditTx} onDeleteTx={onDeleteTx} />
+            <Mechanics data={data} car={car} helpers={helpers} update={update} toast={toast} confirm={confirm} userId={userId} onEditTx={onEditTx} onDeleteTx={onDeleteTx} form={svcForm} setForm={setSvcForm} />
           ) : (<>
 
           {car && (
@@ -3570,9 +3592,10 @@ function DueCard({ icon: Icon, label, lastISO, months, hint }) {
   );
 }
 
-function Mechanics({ data, car, helpers, update, toast, confirm, userId, onEditTx, onDeleteTx }) {
+/* `form` (wpis serwisowy w edycji) mieszka w Fuel_, bo przycisk „Dodaj serwis"
+   stoi w nagłówku strony, poza tym komponentem. */
+function Mechanics({ data, car, helpers, update, toast, confirm, userId, onEditTx, onDeleteTx, form, setForm }) {
   const { toMain, main } = helpers;
-  const [form, setForm] = useState(null); // wpis serwisowy w edycji
 
   /* wszystkie koszty auta: paliwo (z tankowań) + kategoria „Samochód” */
   const stats = useMemo(() => {
