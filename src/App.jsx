@@ -21,6 +21,21 @@ import { supabase } from "./supabase";
 const CURRENCIES = ["PLN", "EUR", "USD", "GBP", "CHF", "CZK", "UAH", "JPY"];
 const DEFAULT_RATES = { PLN: 1, EUR: 4.30, USD: 3.70, GBP: 5.02, CHF: 4.62, CZK: 0.175, UAH: 0.095, JPY: 0.025 };
 
+/* Kursy z tabeli A NBP — bez klucza, z nagłówkiem CORS, kwotowane jako
+   „ile PLN za 1 jednostkę”, czyli dokładnie w formacie DEFAULT_RATES.
+   Zwracamy tylko waluty, które zna aplikacja; brakujące zostają bez zmian. */
+async function fetchNbpRates() {
+  const res = await fetch("https://api.nbp.pl/api/exchangerates/tables/A?format=json");
+  if (!res.ok) throw new Error("HTTP " + res.status);
+  const table = (await res.json())[0];
+  const out = { PLN: 1 };
+  for (const r of table?.rates || []) {
+    if (CURRENCIES.includes(r.code) && Number(r.mid) > 0) out[r.code] = Number(r.mid);
+  }
+  if (Object.keys(out).length < 2) throw new Error("empty");
+  return out;
+}
+
 const ICONS = {
   Utensils, Car, Home, ShoppingBag, HeartPulse, Gamepad2, GraduationCap, Plane,
   Zap, Gift, Briefcase, TrendingUp, PiggyBank, Fuel, Shirt, Coffee, Smartphone,
@@ -38,6 +53,9 @@ const DEFAULT_CATEGORIES = [
   { id: "c-fun",    name: "Rozrywka",        type: "expense", icon: "Gamepad2",      color: "#34E0A1", builtin: true },
   { id: "c-bills",  name: "Rachunki",        type: "expense", icon: "Zap",           color: "#FFD166", builtin: true },
   { id: "c-fuel",   name: "Paliwo",          type: "expense", icon: "Fuel",          color: "#F97316", builtin: true },
+  /* Wydatki na tę kategorię wskazują konkretne auto (pole carId na transakcji)
+     i sumują się w zakładce Mechanika obok kosztów paliwa. */
+  { id: "c-car",    name: "Samochód",        type: "expense", icon: "Wrench",        color: "#64748B", builtin: true, car: true },
   { id: "c-edu",    name: "Edukacja",        type: "expense", icon: "GraduationCap", color: "#38BDF8", builtin: true },
   { id: "c-travel", name: "Podróże",         type: "expense", icon: "Plane",         color: "#A78BFA", builtin: true },
   { id: "c-cloth",  name: "Ubrania",         type: "expense", icon: "Shirt",         color: "#F472B6", builtin: true },
@@ -205,7 +223,12 @@ const authErrPl = (e) => {
 /* ---------------- utils ---------------- */
 
 const uid = () => Math.random().toString(36).slice(2, 9) + Date.now().toString(36).slice(-4);
-const todayISO = () => new Date().toISOString().slice(0, 10);
+/* Data lokalna, nie UTC. toISOString() przelicza na UTC, więc w polskiej
+   strefie między północą a 2:00 zwracało WCZORAJ — wpisy dodane w nocy
+   dostawały złą datę, a terminy przeglądu wypadały dzień za wcześnie. */
+const localISO = (d = new Date()) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const todayISO = () => localISO();
 const ym = (d) => d.slice(0, 7);
 const MONTHS_PL = ["sty","lut","mar","kwi","maj","cze","lip","sie","wrz","paź","lis","gru"];
 const MONTHS_FULL = ["Styczeń","Luty","Marzec","Kwiecień","Maj","Czerwiec","Lipiec","Sierpień","Wrzesień","Październik","Listopad","Grudzień"];
@@ -435,15 +458,19 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 input[type="date"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; min-height: 46px; text-align: left; }
 input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .toast {
-  /* 100px robiło miejsce dolnej nawigacji, której już nie ma — teraz tyle,
-     żeby toast minął FAB i pływający pasek Safari, ale nie wisiał w powietrzu */
-  position: fixed; bottom: calc(84px + max(env(safe-area-inset-bottom), 12px)); left: 50%; transform: translateX(-50%);
+  /* Na mobile siedzi tuż nad dolną krawędzią, a nie w połowie ekranu: zamiast
+     wisieć NAD FAB-em, mija go z lewej (left/right zamiast wyśrodkowania),
+     dzięki czemu może zejść nisko i nie zasłania treści. */
+  position: fixed; bottom: calc(16px + max(env(safe-area-inset-bottom), 10px));
+  left: 16px; right: 88px; transform: none;
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   padding: 12px 16px; border-radius: 14px; z-index: 990; display: flex; align-items: center; gap: 14px;
   box-shadow: var(--shadow); animation: fadeIn .22s ease both; font-size: 14px; font-weight: 600;
-  max-width: min(92vw, 420px);
 }
-@media (min-width: 1024px) { .toast { bottom: 28px; } }
+@media (min-width: 1024px) {
+  /* na desktopie FAB jest w prawym dolnym rogu, więc wracamy do wyśrodkowania */
+  .toast { bottom: 28px; left: 50%; right: auto; transform: translateX(-50%); max-width: min(92vw, 420px); }
+}
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
   /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim.
@@ -1179,7 +1206,10 @@ function TransactionForm({ data, initial, onSave, onClose }) {
   const [categoryId, setCategoryId] = useState(initial?.categoryId || "");
   const [date, setDate] = useState(initial?.date || todayISO());
   const [note, setNote] = useState(initial?.note || "");
+  const [carId, setCarId] = useState(initial?.carId || data.cars?.[0]?.id || "");
   const [showNote, setShowNote] = useState(!!initial?.note);
+  /* kategoria „Samochód” wiąże wydatek z konkretnym autem — patrz Mechanika */
+  const carCat = data.categories.find((c) => c.id === categoryId)?.car;
   const [recurring, setRecurring] = useState(false);
   const [recDay, setRecDay] = useState(new Date().getDate() > 28 ? 28 : new Date().getDate());
   const [startCycle, setStartCycle] = useState(false);
@@ -1196,12 +1226,14 @@ function TransactionForm({ data, initial, onSave, onClose }) {
     if (!name.trim()) e.name = "Podaj nazwę transakcji.";
     if (isNaN(num) || num <= 0) e.amount = "Kwota musi być liczbą większą od 0.";
     if (!categoryId) e.category = "Wybierz kategorię.";
+    if (carCat && data.cars.length && !carId) e.car = "Wybierz, którego auta dotyczy wydatek.";
     if (!date) e.date = "Podaj datę.";
     setErrs(e);
     if (Object.keys(e).length) return;
     onSave({
       id: initial?.id || uid(), type, name: name.trim(), amount: Math.round(num * 100) / 100,
       currency, categoryId, date, note: note.trim(), recurringId: initial?.recurringId,
+      ...(carCat && carId ? { carId } : {}),
     }, recurring && !editing ? { day: recDay } : null,
     { startCycle: startCycle && type === "income" && !editing, cycleDate: date });
   };
@@ -1227,6 +1259,23 @@ function TransactionForm({ data, initial, onSave, onClose }) {
       <Field label="Kategoria" error={errs.category}>
         <CategoryGrid categories={data.categories} transactions={data.transactions} type={type} value={categoryId} onChange={setCategoryId} />
       </Field>
+      {carCat && (
+        data.cars.length ? (
+          <Field label="Którego auta dotyczy?" error={errs.car}>
+            <select className="select" value={carId} onChange={(e) => setCarId(e.target.value)}>
+              {data.cars.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+            </select>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
+              Koszt doliczy się do tego auta w sekcji Paliwo → Mechanika.
+            </div>
+          </Field>
+        ) : (
+          <div className="card" style={{ padding: 12, marginBottom: 14, background: "var(--surface2)", boxShadow: "none",
+            fontSize: 12.5, fontWeight: 600, color: "var(--muted)", lineHeight: 1.5 }}>
+            Nie masz jeszcze żadnego auta — dodaj je w sekcji Paliwo, a wtedy wydatki z tej kategorii będą się do niego doliczać.
+          </div>
+        )
+      )}
       <Field label="Data" error={errs.date}>
         <input type="date" className="input" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} />
       </Field>
@@ -2132,7 +2181,7 @@ function rangeFromPreset(preset, custom) {
   if (preset === "m") return { from: `${end.slice(0, 7)}-01`, to: end };
   const months = preset === "3m" ? 3 : preset === "6m" ? 6 : 12;
   const d = new Date(now.getFullYear(), now.getMonth() - (months - 1), 1);
-  return { from: d.toISOString().slice(0, 10), to: end };
+  return { from: localISO(d), to: end };
 }
 
 function Heatmap({ txs, toMain, monthISO, main }) {
@@ -3052,7 +3101,7 @@ function Reports({ data, helpers, go, toast, confirm, update }) {
   );
 }
 
-function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefuel }) {
+function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefuel, userId }) {
   const { main, addDisabled, addBlocked } = helpers;
   const [activeCar, setActiveCar] = useState(data.cars[0]?.id || null);
   const [carForm, setCarForm] = useState(null);
@@ -3062,6 +3111,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
      spalanie i koszty auta mają sens dopiero na dłuższej próbce. Miesiąc można
      wybrać ręcznie w selektorze nad kartami aut. */
   const [period, setPeriod] = useState("all");
+  const [tab, setTab] = useState("fuel"); // "fuel" | "mech"
   const [editRefuel, setEditRefuel] = useState(null);
   const [allRefuelsOpen, setAllRefuelsOpen] = useState(false);
   const [allStationsOpen, setAllStationsOpen] = useState(false);
@@ -3222,6 +3272,20 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
             )}
           </div>
 
+          {/* dwie strony tego samego auta: zużycie paliwa i reszta kosztów */}
+          <div className="seg">
+            <button className={tab === "fuel" ? "on" : ""} onClick={() => setTab("fuel")}>
+              <Droplets size={15} style={{ verticalAlign: -3, marginRight: 6 }} />Paliwo
+            </button>
+            <button className={tab === "mech" ? "on" : ""} onClick={() => setTab("mech")}>
+              <Wrench size={15} style={{ verticalAlign: -3, marginRight: 6 }} />Mechanika
+            </button>
+          </div>
+
+          {tab === "mech" ? (
+            <Mechanics data={data} car={car} helpers={helpers} update={update} toast={toast} confirm={confirm} userId={userId} />
+          ) : (<>
+
           {car && (
             <>
               {stats ? (
@@ -3357,9 +3421,11 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
             </Sheet>
           </div>
 
+          </>)}
+
           {car && (
             <p style={{ color: "var(--muted)", fontWeight: 600, fontSize: 12, margin: "2px 2px 0" }}>
-              Edycję i usuwanie aut znajdziesz w Ustawieniach → Samochody i stacje.
+              Edycję, terminy i usuwanie aut znajdziesz w Ustawieniach → Samochody i stacje.
             </p>
           )}
         </>
@@ -3405,17 +3471,275 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
   );
 }
 
+/* ---------------- mechanika: koszty auta poza paliwem ---------------- */
+
+/* „ostatni raz + ważność w miesiącach” → data następnego terminu */
+function nextDue(lastISO, months) {
+  if (!lastISO || !months) return null;
+  const d = new Date(lastISO + "T00:00:00");
+  if (isNaN(d)) return null;
+  /* setMonth na 31. dniu przelewa się na kolejny miesiąc (31 sty + 1 mies. =
+     3 mar), więc liczymy na 1. dniu i przycinamy do ostatniego dnia miesiąca */
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  const lastDay = new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate();
+  d.setDate(Math.min(day, lastDay));
+  return localISO(d);
+}
+const daysUntil = (iso) => Math.round((new Date(iso + "T00:00:00") - new Date(todayISO() + "T00:00:00")) / 864e5);
+
+function DueCard({ icon: Icon, label, lastISO, months, hint }) {
+  const due = nextDue(lastISO, months);
+  if (!due) {
+    return (
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 13.5, marginBottom: 5 }}>
+          <Icon size={16} style={{ color: "var(--muted)" }} /> {label}
+        </div>
+        <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.45 }}>{hint}</div>
+      </div>
+    );
+  }
+  const left = daysUntil(due);
+  const tone = left < 0 ? "neg" : left <= 30 ? "warn" : "accent";
+  const color = `var(--${tone})`;
+  return (
+    <div className="card" style={{ padding: 14, borderColor: left <= 30 ? color : undefined }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, fontWeight: 800, fontSize: 13.5, marginBottom: 5 }}>
+        <Icon size={16} style={{ color }} /> {label}
+      </div>
+      <div className="sens" style={{ fontSize: 17, fontWeight: 800, letterSpacing: "-0.02em" }}>{fmtDate(due)}</div>
+      <div style={{ fontSize: 12.5, fontWeight: 700, color, marginTop: 3 }}>
+        {left < 0 ? `po terminie o ${Math.abs(left)} dni` : left === 0 ? "dziś!" : `za ${left} dni`}
+      </div>
+    </div>
+  );
+}
+
+function Mechanics({ data, car, helpers, update, toast, confirm, userId }) {
+  const { toMain, main } = helpers;
+  const [form, setForm] = useState(null); // wpis serwisowy w edycji
+
+  /* wszystkie koszty auta: paliwo (z tankowań) + kategoria „Samochód” */
+  const stats = useMemo(() => {
+    if (!car) return null;
+    const fuelTx = data.transactions.filter((t) => t.refuelId && data.refuels.some((r) => r.id === t.refuelId && r.carId === car.id));
+    const carTx = data.transactions.filter((t) => t.carId === car.id);
+    const sum = (arr) => arr.reduce((s, t) => s + toMain(t.amount, t.currency), 0);
+    const fuelCost = sum(fuelTx), otherCost = sum(carTx);
+    const all = [...fuelTx, ...carTx].map((t) => t.date).sort();
+    const months = all.length
+      ? Math.max(1, (new Date(all[all.length - 1]) - new Date(all[0])) / (30.44 * 864e5) + 1)
+      : 1;
+    return { fuelCost, otherCost, total: fuelCost + otherCost, perMonth: (fuelCost + otherCost) / months, count: carTx.length, since: all[0] || null };
+  }, [data.transactions, data.refuels, car, toMain]);
+
+  const services = useMemo(
+    () => [...(car?.services || [])].sort((a, b) => b.date.localeCompare(a.date)),
+    [car]);
+
+  const saveService = (svc) => {
+    update((d) => ({
+      ...d,
+      cars: d.cars.map((c) => (c.id !== car.id ? c : {
+        ...c,
+        services: (c.services || []).some((s) => s.id === svc.id)
+          ? (c.services || []).map((s) => (s.id === svc.id ? svc : s))
+          : [...(c.services || []), svc],
+      })),
+    }));
+    setForm(null); toast("Wpis serwisowy zapisany");
+  };
+  const delService = (svc) => confirm(
+    { title: "Usunąć wpis serwisowy?", desc: `„${svc.title}” z ${fmtDate(svc.date)} zostanie trwale usunięty.`, danger: true, confirmLabel: "Usuń" },
+    () => {
+      update((d) => ({ ...d, cars: d.cars.map((c) => (c.id !== car.id ? c : { ...c, services: (c.services || []).filter((s) => s.id !== svc.id) })) }));
+      toast("Wpis usunięty");
+    });
+
+  if (!car) return <EmptyState icon={CarFront} title="Brak samochodu" desc="Dodaj auto, aby prowadzić dla niego historię serwisową i koszty." />;
+
+  return (
+    <>
+      <StatRail>
+        <StatCard icon={Wallet} label="Koszt miesięczny" value={fmtMoney(stats.perMonth, main, true)}
+          sub={stats.since ? `średnio od ${fmtDate(stats.since)}` : "brak danych"} />
+        <StatCard icon={Coins} label="Łącznie na auto" value={fmtMoney(stats.total, main, true)} />
+        <StatCard icon={Droplets} label="Paliwo" value={fmtMoney(stats.fuelCost, main, true)}
+          sub={stats.total > 0 ? `${Math.round((stats.fuelCost / stats.total) * 100)}% kosztów` : undefined} />
+        <StatCard icon={Wrench} label="Serwis i opłaty" value={fmtMoney(stats.otherCost, main, true)}
+          sub={`${stats.count} ${stats.count === 1 ? "wydatek" : "wydatków"}`} />
+      </StatRail>
+
+      <div className="stat-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <DueCard icon={Check} label="Przegląd" lastISO={car.inspectionLast} months={car.inspectionMonths}
+          hint="Podaj datę ostatniego przeglądu w danych auta, a policzymy następny termin." />
+        <DueCard icon={Landmark} label="Ubezpieczenie" lastISO={car.insuranceLast} months={car.insuranceMonths}
+          hint="Podaj datę początku polisy w danych auta, a policzymy koniec ochrony." />
+      </div>
+
+      <div className="card" style={{ padding: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginBottom: 10, padding: "4px 6px" }}>
+          <div style={{ fontWeight: 800 }}>Historia serwisowa</div>
+          <button className="btn btn-primary" style={{ padding: "7px 12px", fontSize: 12.5 }} onClick={() => setForm({})}>
+            <Plus size={14} /> Dodaj wpis
+          </button>
+        </div>
+        {services.length === 0 ? (
+          <div style={{ padding: "10px 6px 4px", fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5 }}>
+            Zapisuj tu wymiany oleju, naprawy i przeglądy — razem z paragonem lub zdjęciem, żeby mieć je pod ręką przy sprzedaży auta.
+          </div>
+        ) : (
+          <div className="tx-list">
+            {services.map((s) => (
+              <div key={s.id} className="tx-row" style={{ cursor: "default" }}>
+                <div className="icon-badge" style={{ background: "#64748B22", color: "#64748B" }}><Wrench size={18} /></div>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontWeight: 700, fontSize: 14 }}>{s.title}</div>
+                  <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+                    {fmtDate(s.date)}{s.note ? ` · ${s.note}` : ""}
+                  </div>
+                  {s.fileUrl && (
+                    <a href={s.fileUrl} target="_blank" rel="noopener noreferrer"
+                      style={{ fontSize: 12, fontWeight: 700, color: "var(--accent)", display: "inline-flex", alignItems: "center", gap: 5, marginTop: 4 }}>
+                      <FileText size={13} /> {s.fileName || "Załącznik"}
+                    </a>
+                  )}
+                </div>
+                {s.cost > 0 && <div className="sens" style={{ fontWeight: 800 }}>{fmtMoney(s.cost, main)}</div>}
+                <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Edytuj wpis" onClick={() => setForm(s)}><Pencil size={15} /></button>
+                <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Usuń wpis" onClick={() => delService(s)}><Trash2 size={15} /></button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <Sheet open={!!form} onClose={() => setForm(null)} title={form?.id ? "Edytuj wpis serwisowy" : "Nowy wpis serwisowy"}>
+        {form && <ServiceForm initial={form} main={main} carId={car.id} userId={userId} onSave={saveService} onClose={() => setForm(null)} />}
+      </Sheet>
+    </>
+  );
+}
+
+function ServiceForm({ initial, main, carId, userId, onSave, onClose }) {
+  const [title, setTitle] = useState(initial.title || "");
+  const [date, setDate] = useState(initial.date || todayISO());
+  const [cost, setCost] = useState(initial.cost ? String(initial.cost).replace(".", ",") : "");
+  const [note, setNote] = useState(initial.note || "");
+  const [fileUrl, setFileUrl] = useState(initial.fileUrl || "");
+  const [fileName, setFileName] = useState(initial.fileName || "");
+  const [uploading, setUploading] = useState(false);
+  const [uploadErr, setUploadErr] = useState("");
+  const [errs, setErrs] = useState({});
+  const fileRef = useRef(null);
+
+  /* Załączniki lądują w Supabase Storage, a nie w dokumencie danych: zapis do
+     bazy wysyła CAŁY dokument, więc zdjęcie w środku obciążałoby każdy zapis. */
+  const pickFile = async (e) => {
+    const f = e.target.files?.[0];
+    e.target.value = "";
+    if (!f) return;
+    if (f.size > 8 * 1024 * 1024) { setUploadErr("Plik jest większy niż 8 MB."); return; }
+    setUploading(true); setUploadErr("");
+    try {
+      const path = `${userId}/${carId}/${uid()}-${f.name.replace(/[^\w.\-]/g, "_").slice(-60)}`;
+      const { error } = await supabase.storage.from("car-docs").upload(path, f, { upsert: false });
+      if (error) throw error;
+      const { data: pub } = supabase.storage.from("car-docs").getPublicUrl(path);
+      setFileUrl(pub.publicUrl); setFileName(f.name);
+    } catch (err) {
+      const m = String(err?.message || err);
+      setUploadErr(/not found|bucket/i.test(m)
+        ? "Brak miejsca na pliki. W panelu Supabase utwórz bucket „car-docs”, a załączniki zaczną działać."
+        : "Nie udało się wysłać pliku: " + m);
+    } finally { setUploading(false); }
+  };
+
+  const submit = () => {
+    const e = {};
+    if (!title.trim()) e.title = "Podaj, co było robione.";
+    if (!date) e.date = "Podaj datę.";
+    setErrs(e); if (Object.keys(e).length) return;
+    const c = parseNum(cost);
+    onSave({
+      id: initial.id || uid(), title: title.trim(), date, note: note.trim(),
+      cost: !isNaN(c) && c > 0 ? Math.round(c * 100) / 100 : 0,
+      fileUrl: fileUrl || null, fileName: fileName || null,
+    });
+  };
+
+  return (
+    <>
+      <Field label="Co było robione?" error={errs.title}>
+        <input className={`input ${errs.title ? "err" : ""}`} placeholder="np. Wymiana oleju i filtrów" value={title} onChange={(e) => setTitle(e.target.value)} />
+      </Field>
+      <div style={{ display: "flex", gap: 10 }}>
+        <div style={{ flex: 1 }}>
+          <Field label="Data" error={errs.date}>
+            <input type="date" className="input" value={date} max={todayISO()} onChange={(e) => setDate(e.target.value)} />
+          </Field>
+        </div>
+        <div style={{ flex: 1 }}>
+          <Field label={`Koszt (${main})`}><NumInput value={cost} onChange={setCost} /></Field>
+        </div>
+      </div>
+      <Field label="Szczegóły (opcjonalne)">
+        <textarea className="input" rows={2} placeholder="np. warsztat, przebieg, użyte części" value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+
+      <Field label="Dokument lub zdjęcie (opcjonalne)">
+        {fileUrl ? (
+          <div className="card" style={{ padding: 12, background: "var(--surface2)", boxShadow: "none", display: "flex", alignItems: "center", gap: 10 }}>
+            <FileText size={17} style={{ color: "var(--accent)", flexShrink: 0 }} />
+            <a href={fileUrl} target="_blank" rel="noopener noreferrer"
+              style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 700, color: "var(--accent)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {fileName || "Załącznik"}
+            </a>
+            <button className="btn btn-ghost" style={{ padding: 7 }} aria-label="Odepnij załącznik"
+              onClick={() => { setFileUrl(""); setFileName(""); }}><X size={15} /></button>
+          </div>
+        ) : (
+          <button className="btn btn-ghost" style={{ width: "100%" }} disabled={uploading} onClick={() => fileRef.current?.click()}>
+            {uploading ? "Wysyłam…" : "Wybierz plik lub zdjęcie"}
+          </button>
+        )}
+        <input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={pickFile} style={{ display: "none" }} />
+        {uploadErr && <div className="err-msg" style={{ marginTop: 8 }}>{uploadErr}</div>}
+      </Field>
+
+      <div style={{ display: "flex", gap: 10 }}>
+        <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Anuluj</button>
+        <button className="btn btn-primary" style={{ flex: 2 }} onClick={submit}>Zapisz wpis</button>
+      </div>
+    </>
+  );
+}
+
 function CarForm({ initial, onSave, onClose }) {
   const [name, setName] = useState(initial.name || "");
   const [tank, setTank] = useState(initial.tank ? String(initial.tank) : "");
   const [fuel, setFuel] = useState(initial.fuel || "Benzyna");
+  /* terminy podajemy jako „ostatni raz + na ile ważne”, a datę następnego
+     aplikacja wylicza sama — tak, jak wygląda to na dokumentach */
+  const [inspLast, setInspLast] = useState(initial.inspectionLast || "");
+  const [inspM, setInspM] = useState(String(initial.inspectionMonths ?? 12));
+  const [insLast, setInsLast] = useState(initial.insuranceLast || "");
+  const [insM, setInsM] = useState(String(initial.insuranceMonths ?? 12));
   const [errs, setErrs] = useState({});
   const submit = () => {
     const e = {}; const t = parseNum(tank);
     if (!name.trim()) e.name = "Podaj nazwę auta.";
     if (isNaN(t) || t <= 0) e.tank = "Pojemność baku musi być większa od 0.";
     setErrs(e); if (Object.keys(e).length) return;
-    onSave({ id: initial.id || uid(), name: name.trim(), tank: t, fuel });
+    onSave({
+      ...initial,
+      id: initial.id || uid(), name: name.trim(), tank: t, fuel,
+      inspectionLast: inspLast || null, inspectionMonths: Math.max(1, Math.round(parseNum(inspM)) || 12),
+      insuranceLast: insLast || null, insuranceMonths: Math.max(1, Math.round(parseNum(insM)) || 12),
+      services: initial.services || [],
+    });
   };
   return (
     <>
@@ -3425,6 +3749,19 @@ function CarForm({ initial, onSave, onClose }) {
         <select className="select" value={fuel} onChange={(e) => setFuel(e.target.value)}>
           {["Benzyna", "Diesel", "LPG", "Hybryda", "Elektryk"].map((f) => <option key={f}>{f}</option>)}
         </select>
+      </Field>
+      <div style={{ fontWeight: 800, fontSize: 13.5, margin: "4px 0 10px" }}>Terminy (opcjonalnie)</div>
+      <Field label="Ostatni przegląd">
+        <div style={{ display: "flex", gap: 10 }}>
+          <input type="date" className="input" style={{ flex: 1 }} value={inspLast} max={todayISO()} onChange={(e) => setInspLast(e.target.value)} />
+          <div style={{ width: 108 }}><NumInput value={inspM} onChange={setInspM} suffix="mies." /></div>
+        </div>
+      </Field>
+      <Field label="Ubezpieczenie od">
+        <div style={{ display: "flex", gap: 10 }}>
+          <input type="date" className="input" style={{ flex: 1 }} value={insLast} onChange={(e) => setInsLast(e.target.value)} />
+          <div style={{ width: 108 }}><NumInput value={insM} onChange={setInsM} suffix="mies." /></div>
+        </div>
       </Field>
       <div style={{ display: "flex", gap: 10 }}>
         <button className="btn btn-ghost" style={{ flex: 1 }} onClick={onClose}>Anuluj</button>
@@ -3712,13 +4049,14 @@ function sanitizeImported(inc) {
       categoryId: str(t?.categoryId, 64), date: isoDate(t?.date), note: str(t?.note, 500),
       ...(t?.recurringId ? { recurringId: str(t.recurringId, 64) } : {}),
       ...(t?.refuelId ? { refuelId: str(t.refuelId, 64) } : {}),
+      ...(t?.carId ? { carId: str(t.carId, 64) } : {}),
     })),
     categories: arr(inc.categories).map((c) => ({
       id: id(c?.id), name: str(c?.name, 60),
       type: c?.type === "income" ? "income" : "expense",
       icon: ICON_NAMES.includes(c?.icon) ? c.icon : "CircleHelp",
       color: /^#[0-9a-f]{3,8}$/i.test(c?.color) ? c.color : "#94A3B8",
-      builtin: !!c?.builtin,
+      builtin: !!c?.builtin, ...(c?.car ? { car: true } : {}),
     })),
     recurring: arr(inc.recurring).map((r) => ({
       id: id(r?.id), name: str(r?.name, 120), amount: num(r?.amount), currency: cur(r?.currency),
@@ -3760,6 +4098,8 @@ function sanitizeImported(inc) {
       })(),
       theme: THEMES.some((t) => t.id === inc.settings?.theme) ? inc.settings.theme : "dark",
       navOrder: normalizeNav(Array.isArray(inc.settings?.navOrder) ? inc.settings.navOrder : DEFAULT_NAV),
+      ...(inc.settings?.ratesAuto === false ? { ratesAuto: false } : {}),
+      ...(typeof inc.settings?.ratesAt === "string" ? { ratesAt: inc.settings.ratesAt.slice(0, 40) } : {}),
       hideBalance: !!inc.settings?.hideBalance,
       ...(typeof inc.settings?.incognitoPinHash === "string" ? { incognitoPinHash: inc.settings.incognitoPinHash.slice(0, 128) } : {}),
       /* zaszyfrowany klucz AI — przenosimy tylko poprawnie ukształtowany blob;
@@ -4172,7 +4512,7 @@ function RecurringManager({ data, helpers, update, toast, confirm, back }) {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontWeight: 800, fontSize: 14.5 }}>{r.name}</div>
                   <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-                    {r.paused ? "Wstrzymana" : `Następna: ${fmtDate(next.toISOString().slice(0, 10))}`} · {r.day}. dzień mies.
+                    {r.paused ? "Wstrzymana" : `Następna: ${fmtDate(localISO(next))}`} · {r.day}. dzień mies.
                   </div>
                 </div>
                 <div className="sens" style={{ fontWeight: 800, color: r.type === "income" ? "var(--accent)" : "var(--neg)" }}>
@@ -4197,6 +4537,21 @@ function RecurringManager({ data, helpers, update, toast, confirm, back }) {
 
 function CurrencyManager({ data, update, toast, back }) {
   const [rates, setRates] = useState(() => Object.fromEntries(CURRENCIES.map((c) => [c, String(data.settings.rates[c] ?? DEFAULT_RATES[c])])));
+  const [fetching, setFetching] = useState(false);
+  const auto = data.settings.ratesAuto !== false; // domyślnie włączone
+  const fetchedAt = data.settings.ratesAt;
+
+  const pull = async (silent) => {
+    setFetching(true);
+    try {
+      const fresh = await fetchNbpRates();
+      setRates(Object.fromEntries(CURRENCIES.map((c) => [c, String(fresh[c] ?? DEFAULT_RATES[c])])));
+      update((d) => ({ ...d, settings: { ...d.settings, rates: fresh, ratesAt: new Date().toISOString() } }));
+      if (!silent) toast("Kursy pobrane z NBP");
+    } catch (e) {
+      if (!silent) toast("Nie udało się pobrać kursów — zostają dotychczasowe");
+    } finally { setFetching(false); }
+  };
   const save = () => {
     const parsed = {};
     for (const c of CURRENCIES) {
@@ -4218,10 +4573,34 @@ function CurrencyManager({ data, update, toast, back }) {
           {CURRENCIES.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
       </div>
+      <div className="card" style={{ padding: 18, marginBottom: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12, marginBottom: 10 }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontWeight: 800 }}>Pobieraj kursy automatycznie</div>
+            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 3, lineHeight: 1.45 }}>
+              Raz dziennie z tabeli A Narodowego Banku Polskiego.
+            </div>
+          </div>
+          <input type="checkbox" checked={auto} style={{ width: 20, height: 20, accentColor: "var(--accent)", flexShrink: 0 }}
+            onChange={(e) => {
+              const on = e.target.checked;
+              update((d) => ({ ...d, settings: { ...d.settings, ratesAuto: on } }));
+              toast(on ? "Kursy będą pobierane automatycznie" : "Kursy tylko ręcznie");
+              if (on) pull(true);
+            }} />
+        </div>
+        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginBottom: 12 }}>
+          {fetchedAt ? `Ostatnia aktualizacja: ${fmtDate(fetchedAt.slice(0, 10))}` : "Kursy nie były jeszcze pobierane"}
+        </div>
+        <button className="btn btn-ghost" style={{ width: "100%" }} disabled={fetching} onClick={() => pull(false)}>
+          <RefreshCw size={15} /> {fetching ? "Pobieram…" : "Pobierz teraz z NBP"}
+        </button>
+      </div>
+
       <div className="card" style={{ padding: 18 }}>
         <div style={{ fontWeight: 800, marginBottom: 4 }}>Kursy względem PLN</div>
         <p style={{ color: "var(--muted)", fontSize: 12.5, fontWeight: 600, marginBottom: 14, lineHeight: 1.5 }}>
-          Kursy edytujesz ręcznie (aktualne znajdziesz np. na stronie NBP). Aplikacja działa offline, więc przelicza kwoty według wartości zapisanych poniżej.
+          Możesz je też nadpisać ręcznie — zapisana wartość obowiązuje do następnego pobrania. Aplikacja przelicza kwoty offline, według wartości poniżej.
         </p>
         {CURRENCIES.map((c) => (
           <div key={c} style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
@@ -5268,6 +5647,11 @@ export default function App() {
     }
     if (!d) d = emptyData();
     d = { ...emptyData(), ...d, settings: { ...emptyData().settings, ...(d.settings || {}), rates: { ...DEFAULT_RATES, ...(d.settings?.rates || {}) } } };
+    /* konta założone przed wprowadzeniem kategorii „Samochód” jej nie mają —
+       dokładamy ją, nie ruszając własnych kategorii użytkownika */
+    for (const req of DEFAULT_CATEGORIES.filter((c) => c.car)) {
+      if (!d.categories.some((c) => c.id === req.id)) d.categories = [...d.categories, req];
+    }
     // migrate old flat budgets ({catId: limit}) to per-month ({YYYY-MM: {catId: limit}})
     if (d.budgets && Object.values(d.budgets).some((v) => typeof v === "number")) {
       const nowD = new Date();
@@ -5381,6 +5765,20 @@ export default function App() {
   }, [dbDown, data, userId]); // eslint-disable-line
 
   const update = useCallback((fn) => setData((d) => fn(d)), []);
+
+  /* Kursy walut: odświeżamy najwyżej raz dziennie i tylko gdy użytkownik tego
+     nie wyłączył. Błąd (offline, awaria NBP) jest cichy — zostają dotychczasowe
+     kursy, bo przeliczenia mają działać także bez sieci. */
+  useEffect(() => {
+    if (phase !== "app" || !data || data.settings.ratesAuto === false) return;
+    const last = data.settings.ratesAt ? Date.parse(data.settings.ratesAt) : 0;
+    if (Date.now() - last < 20 * 60 * 60 * 1000) return;
+    let alive = true;
+    fetchNbpRates()
+      .then((rates) => { if (alive) update((d) => ({ ...d, settings: { ...d.settings, rates, ratesAt: new Date().toISOString() } })); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [phase, data?.settings?.ratesAt, data?.settings?.ratesAuto]); // eslint-disable-line
 
   /* Klucz AI: po wczytaniu danych odszyfrowujemy go do pamięci, żeby analizy
      działały bez pytania o cokolwiek. Wpis w starym formacie (v1, szyfrowany
@@ -5602,7 +6000,7 @@ export default function App() {
       case "history": return <History data={data} helpers={helpers} onEditTx={(t) => setTxForm(t)} onDeleteTx={deleteTx} />;
       case "stats": return <Stats data={data} helpers={helpers} go={go} update={update} toast={toast} />;
       case "reports": return <Reports data={data} helpers={helpers} go={go} toast={toast} confirm={confirm} update={update} />;
-      case "fuel": return <Fuel_ data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} openRefuel={openRefuel} setOpenRefuel={setOpenRefuel} />;
+      case "fuel": return <Fuel_ data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} openRefuel={openRefuel} setOpenRefuel={setOpenRefuel} userId={userId} />;
       case "goals": return <Goals data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "budgets": return <Budgets data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "summary": return <Summary data={data} helpers={helpers} />;
