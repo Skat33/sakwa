@@ -865,6 +865,44 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
 }
 .drawer-item:not(.on):active { background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
 
+/* --- karta sterowania sekcji Auto: zakładki + wybór okresu razem --- */
+.ctl-card {
+  background: var(--surface); border: 1px solid var(--line); border-radius: 18px;
+  padding: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px;
+}
+.ctl-card .seg { margin: 0; }
+/* Ikonki przy wierszu mają sens na dużym ekranie. Na telefonie zjadały szerokość
+   tekstowi (szczegóły tankowania łamały się na cztery linie), a i tak wszystko
+   robi dotknięcie wiersza — usuwanie przeniesione do arkusza edycji. */
+.row-act { display: none; }
+@media (min-width: 768px) { .row-act { display: inline-flex; } }
+.ctl-period {
+  display: flex; align-items: center; gap: 9px;
+  padding: 8px 10px; border-radius: 13px;
+  background: var(--surface2); border: 1px solid transparent;
+  transition: background .18s ease, border-color .18s ease;
+}
+.ctl-period-ic { color: var(--muted); flex-shrink: 0; transition: color .18s ease; }
+.ctl-period-lbl { font-size: 12.5px; font-weight: 800; color: var(--muted); flex-shrink: 0; transition: color .18s ease; }
+/* wybrany konkretny miesiąc => całość podbita akcentem, żeby filtr rzucał się w oczy */
+.ctl-period.on { background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
+.ctl-period.on .ctl-period-ic, .ctl-period.on .ctl-period-lbl { color: var(--accent); }
+.ctl-period-pick { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
+.ctl-period-pick select {
+  appearance: none; -webkit-appearance: none; background: none; border: none; outline: none;
+  font-family: inherit; font-size: 15px; font-weight: 800; color: var(--text);
+  text-align: right; padding: 4px 0; cursor: pointer; max-width: 100%;
+}
+.ctl-period.on .ctl-period-pick select { color: var(--accent); }
+.ctl-period-pick svg { color: var(--muted); flex-shrink: 0; pointer-events: none; }
+.ctl-period.on .ctl-period-pick svg { color: var(--accent); }
+.ctl-period-clear {
+  flex-shrink: 0; width: 26px; height: 26px; border-radius: 9px; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent);
+}
+.ctl-period-clear:active { transform: scale(.92); }
+
 .db-banner {
   position: sticky; top: 0; z-index: 70; margin: 0 0 14px;
   display: flex; align-items: center; gap: 12px; padding: 12px 14px;
@@ -3234,26 +3272,6 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
         </div>
       )}
 
-      {monthOpts.length > 0 && (
-        <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 7, color: "var(--muted)", fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>
-            <CalendarDays size={15} /> Okres
-          </div>
-          <select className="select" style={{ flex: 1, minWidth: 0, maxWidth: 280 }} value={period}
-            onChange={(e) => setPeriod(e.target.value)} aria-label="Okres statystyk paliwa">
-            <option value="all">Cały okres</option>
-            {monthOpts.map((m) => (
-              <option key={m} value={m}>{MONTHS_FULL[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</option>
-            ))}
-          </select>
-          {period !== "all" && (
-            <button className="btn btn-ghost" style={{ padding: "7px 12px", fontSize: 12.5 }} onClick={() => setPeriod("all")}>
-              Pokaż wszystko
-            </button>
-          )}
-        </div>
-      )}
-
       {data.cars.length === 0 ? (
         <EmptyState icon={CarFront} title="Brak samochodów" desc="Dodaj pierwszy samochód, aby śledzić tankowania, spalanie i koszty."
           action={<button className="btn btn-primary" onClick={() => setCarForm({})}><Plus size={16} /> Dodaj samochód</button>} />
@@ -3279,14 +3297,38 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
             )}
           </div>
 
-          {/* dwie strony tego samego auta: zużycie paliwa i reszta kosztów */}
-          <div className="seg">
-            <button className={tab === "fuel" ? "on" : ""} onClick={() => setTab("fuel")}>
-              <Droplets size={15} style={{ verticalAlign: -3, marginRight: 6 }} />Paliwo
-            </button>
-            <button className={tab === "mech" ? "on" : ""} onClick={() => setTab("mech")}>
-              <Wrench size={15} style={{ verticalAlign: -3, marginRight: 6 }} />Mechanika
-            </button>
+          {/* Jedna karta sterowania: najpierw CO oglądamy (paliwo / mechanika),
+              pod spodem ZA JAKI okres — wcześniej okres wisiał osobno nad
+              karuzelą aut i wyglądał jak element niezwiązany z resztą. */}
+          <div className="ctl-card">
+            <div className="seg">
+              <button className={tab === "fuel" ? "on" : ""} onClick={() => setTab("fuel")}>
+                <Droplets size={15} style={{ verticalAlign: -3, marginRight: 6 }} />Paliwo
+              </button>
+              <button className={tab === "mech" ? "on" : ""} onClick={() => setTab("mech")}>
+                <Wrench size={15} style={{ verticalAlign: -3, marginRight: 6 }} />Mechanika
+              </button>
+            </div>
+            {monthOpts.length > 0 && (
+              <div className={`ctl-period ${period !== "all" ? "on" : ""}`}>
+                <CalendarDays size={15} className="ctl-period-ic" />
+                <span className="ctl-period-lbl">Okres</span>
+                <div className="ctl-period-pick">
+                  <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Okres danych auta">
+                    <option value="all">Cały okres</option>
+                    {monthOpts.map((m) => (
+                      <option key={m} value={m}>{MONTHS_FULL[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</option>
+                    ))}
+                  </select>
+                  <ChevronDown size={15} aria-hidden="true" />
+                </div>
+                {period !== "all" && (
+                  <button className="ctl-period-clear" aria-label="Pokaż cały okres" onClick={() => setPeriod("all")}>
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+            )}
           </div>
 
           {tab === "mech" ? (
@@ -3351,16 +3393,19 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                       <div className="icon-badge" style={{ background: "#F9731622", color: "#F97316" }}><Fuel size={19} /></div>
                       <div style={{ flex: 1, minWidth: 0 }}>
                         <div style={{ fontWeight: 700, fontSize: 14 }}>{st?.name || "Stacja"} · {r.liters} l</div>
+                        {/* cztery fakty w jednej linii łamały się na telefonie na strzępy —
+                            dzielimy je na dwa stałe wiersze zamiast zdawać się na zawijanie */}
                         <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
-                          {fmtDate(r.date)} · {r.dist != null
-                            ? `${r.dist.toLocaleString("pl-PL")} km · ${((r.liters / r.dist) * 100).toFixed(1)} l/100km`
-                            : "brak dystansu"} · {fmtMoney(r.cost / r.liters, main)}/l
+                          {fmtDate(r.date)}{r.dist != null ? ` · ${r.dist.toLocaleString("pl-PL")} km` : " · brak dystansu"}
+                        </div>
+                        <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600 }}>
+                          {r.dist != null && <>{((r.liters / r.dist) * 100).toFixed(1)} l/100km · </>}{fmtMoney(r.cost / r.liters, main)}/l
                         </div>
                       </div>
-                      <div className="sens" style={{ fontWeight: 800 }}>{fmtMoney(r.cost, main)}</div>
-                      <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Edytuj tankowanie"
+                      <div className="sens" style={{ fontWeight: 800, flexShrink: 0 }}>{fmtMoney(r.cost, main)}</div>
+                      <button className="btn btn-ghost row-act" style={{ padding: 8 }} aria-label="Edytuj tankowanie"
                         onClick={(e) => { e.stopPropagation(); openEdit(r); }}><Pencil size={15} /></button>
-                      <button className="btn btn-ghost" style={{ padding: 8 }} aria-label="Usuń tankowanie"
+                      <button className="btn btn-ghost row-act" style={{ padding: 8 }} aria-label="Usuń tankowanie"
                         onClick={(e) => { e.stopPropagation(); delRefuel(r); }}><Trash2 size={15} /></button>
                     </div>
                   );
@@ -3472,7 +3517,8 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           }));
           setOpenRefuel(false); setEditRefuel(null);
           toast(isEdit ? "Tankowanie zaktualizowane" : "Tankowanie zapisane i dodane do historii");
-        }} onNeedCar={() => { setOpenRefuel(false); setEditRefuel(null); setCarForm({}); }} onNeedStation={() => { setStationForm({}); }} />}
+        }} onDelete={() => { const r = editRefuel; setEditRefuel(null); delRefuel(r); }}
+          onNeedCar={() => { setOpenRefuel(false); setEditRefuel(null); setCarForm({}); }} onNeedStation={() => { setStationForm({}); }} />}
       </Sheet>
     </div>
   );
@@ -3851,7 +3897,7 @@ function StationForm({ initial, onSave, onClose }) {
   );
 }
 
-function RefuelForm({ data, main, defaultCar, initial, onSave, onClose, onNeedCar, onNeedStation }) {
+function RefuelForm({ data, main, defaultCar, initial, onSave, onClose, onDelete, onNeedCar, onNeedStation }) {
   const [carId, setCarId] = useState(initial?.carId || defaultCar || data.cars[0]?.id || "");
   const [stationId, setStationId] = useState(initial?.stationId || data.stations[0]?.id || "");
   /* przy edycji starego wpisu (tylko licznik) podstawiamy dystans wyliczony
@@ -3914,6 +3960,11 @@ function RefuelForm({ data, main, defaultCar, initial, onSave, onClose, onNeedCa
           {initial ? "Zapisz zmiany" : "Zapisz tankowanie"}
         </button>
       </div>
+      {initial && onDelete && (
+        <button className="btn btn-danger" style={{ width: "100%", marginTop: 10 }} onClick={onDelete}>
+          <Trash2 size={15} /> Usuń tankowanie
+        </button>
+      )}
     </>
   );
 }
