@@ -8,7 +8,7 @@ import {
   RefreshCw, LogOut, UserRound, Palette, Coins, Repeat, CarFront, Check, Printer,
   Droplets, Gauge, MapPin, Sun, Moon, Percent, Landmark, Music, Baby, Bus,
   ChevronUp, ChevronDown, Menu, RotateCcw, Lock, Eye, EyeOff, ArrowUp, Sparkles, AlertTriangle,
-  ThumbsUp, ThumbsDown, Minus, CalendarDays
+  ThumbsUp, ThumbsDown, Minus, CalendarDays, CalendarRange
 } from "lucide-react";
 import {
   ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip as RTooltip,
@@ -882,11 +882,6 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   padding: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px;
 }
 .ctl-card .seg { margin: 0; }
-/* karuzela aut siedzi w karcie sterowania - kasujemy jej wlasne oddechy,
-   zeby nie robila w srodku podwojnego marginesu */
-.ctl-card .car-carousel { padding: 2px 0 4px; }
-.ctl-card .dots { margin-top: 6px; }
-.ctl-card-sep { height: 1px; background: var(--line); margin: 0 -10px; }
 /* Ikonki przy wierszu mają sens na dużym ekranie. Na telefonie zjadały szerokość
    tekstowi (szczegóły tankowania łamały się na cztery linie), a i tak wszystko
    robi dotknięcie wiersza — usuwanie przeniesione do arkusza edycji. */
@@ -936,6 +931,18 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   font-family: inherit; font-size: 14px; font-weight: 700; color: var(--text); text-align: left;
 }
 .ctl-menu button + button { margin-top: 2px; }
+.ctl-menu-sep { height: 1px; background: var(--line); margin: 6px 8px; }
+.ctl-range { padding: 12px; }
+.ctl-range-row { display: flex; gap: 10px; }
+.ctl-range-row label { flex: 1; min-width: 0; display: block; }
+.ctl-range-row span {
+  display: block; font-size: 11px; font-weight: 800; letter-spacing: .04em;
+  color: var(--muted); text-transform: uppercase; margin-bottom: 5px;
+}
+.ctl-range-row .input { padding: 9px 10px; font-size: 13.5px; font-weight: 700; }
+.ctl-range-btns { display: flex; gap: 8px; margin-top: 11px; }
+.ctl-range-btns .btn { flex: 1; padding: 9px 12px; font-size: 13px; }
+.ctl-range-btns .btn-primary { flex: 1.6; }
 .ctl-menu button:hover { background: var(--surface2); }
 .ctl-menu button.on { background: var(--accent-dim); color: var(--accent); }
 
@@ -3194,19 +3201,35 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
   const [period, setPeriod] = useState("all");
   const [tab, setTab] = useState("fuel"); // "fuel" | "mech"
   const [editRefuel, setEditRefuel] = useState(null);
-  const [svcForm, setSvcForm] = useState(null);
+  const [svcForm, setSvcForm] = useState(null);   // wpis serwisowy, otwierany też z nagłówka
   const [periodOpen, setPeriodOpen] = useState(false);
+  const [menuMode, setMenuMode] = useState("list");   // list | range
+  const [range, setRange] = useState({ from: "", to: "" });   // zatwierdzony zakres
+  const [draft, setDraft] = useState({ from: "", to: "" });   // to, co wpisane w menu
   const periodRef = useRef(null);
-  const periodLabel = (m) => (m === "all" ? "Cały okres" : `${MONTHS_FULL[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`);
+  const shortDate = (iso) => { const d = new Date(iso + "T00:00:00"); return `${d.getDate()} ${MONTHS_PL[d.getMonth()]}`; };
+  const periodLabel = (m) => {
+    if (m === "all") return "Cały okres";
+    if (m === "range") return range.from && range.to ? `${shortDate(range.from)} – ${shortDate(range.to)}` : "Zakres dat";
+    return `${MONTHS_FULL[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`;
+  };
+  /* Jedno miejsce, w którym rozstrzyga się „czy ta data wchodzi w okres" —
+     cały okres, wybrany miesiąc albo własny zakres od–do. */
+  const inPeriod = useCallback((iso) => {
+    if (period === "all") return true;
+    if (period === "range") return (!range.from || iso >= range.from) && (!range.to || iso <= range.to);
+    return ym(iso) === period;
+  }, [period, range]);
   /* menu zamyka klik obok i Esc — inaczej zostawałoby otwarte po wyjściu myszą */
   useEffect(() => {
     if (!periodOpen) return;
-    const away = (e) => { if (!periodRef.current?.contains(e.target)) setPeriodOpen(false); };
-    const esc = (e) => { if (e.key === "Escape") setPeriodOpen(false); };
+    const close = () => { setPeriodOpen(false); setMenuMode("list"); };
+    const away = (e) => { if (!periodRef.current?.contains(e.target)) close(); };
+    const esc = (e) => { if (e.key === "Escape") close(); };
     document.addEventListener("mousedown", away);
     document.addEventListener("keydown", esc);
     return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
-  }, [periodOpen]);   // wpis serwisowy, otwierany też z nagłówka
+  }, [periodOpen]);
   const [allRefuelsOpen, setAllRefuelsOpen] = useState(false);
   const [allStationsOpen, setAllStationsOpen] = useState(false);
   const isMobileF = useMedia("(max-width: 767px)");
@@ -3250,12 +3273,12 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
     return [...set].sort().reverse();
   }, [data.refuels]);
   useEffect(() => {
-    if (period !== "all" && !monthOpts.includes(period)) setPeriod("all");
+    if (period !== "all" && period !== "range" && !monthOpts.includes(period)) setPeriod("all");
   }, [monthOpts]); // eslint-disable-line
 
   const refuels = useMemo(
-    () => (period === "all" ? carRefuels : carRefuels.filter((r) => ym(r.date) === period)),
-    [carRefuels, period]);
+    () => (period === "all" ? carRefuels : carRefuels.filter((r) => inPeriod(r.date))),
+    [carRefuels, period, inPeriod]);
 
   const stats = useMemo(() => {
     if (refuels.length === 0) return null;
@@ -3279,7 +3302,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
 
   const stationRank = useMemo(() => {
     const map = {};
-    (period === "all" ? data.refuels : data.refuels.filter((r) => ym(r.date) === period)).forEach((r) => {
+    (period === "all" ? data.refuels : data.refuels.filter((r) => inPeriod(r.date))).forEach((r) => {
       map[r.stationId] = map[r.stationId] || { liters: 0, cost: 0, n: 0 };
       map[r.stationId].liters += r.liters; map[r.stationId].cost += r.cost; map[r.stationId].n++;
     });
@@ -3291,7 +3314,7 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
       if (a.avg == null) return 1; if (b.avg == null) return -1;
       return stationSort === "asc" ? a.avg - b.avg : b.avg - a.avg;
     });
-  }, [data.refuels, data.stations, stationSort, period]);
+  }, [data.refuels, data.stations, stationSort, period, inPeriod]);
 
   const delRefuel = (r) => confirm(
     { title: "Usunąć tankowanie?", desc: `Tankowanie z ${fmtDate(r.date)} (${r.liters} l za ${fmtMoney(r.cost, main)}) zostanie trwale usunięte.`, danger: true, confirmLabel: "Usuń" },
@@ -3324,8 +3347,8 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           action={<button className="btn btn-primary" onClick={() => setCarForm({})}><Plus size={16} /> Dodaj samochód</button>} />
       ) : (
         <>
-          {/* Jedna karta sterowania, od ogółu do szczegółu: CO oglądamy
-              (paliwo / mechanika), ZA JAKI okres, a na końcu KTÓRE auto. */}
+          {/* Jedna karta sterowania: CO oglądamy (paliwo / mechanika)
+              i ZA JAKI okres. */}
           <div className="ctl-card">
             <div className="seg">
               <button className={tab === "fuel" ? "on" : ""} onClick={() => setTab("fuel")}>
@@ -3349,7 +3372,29 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                     <X size={14} />
                   </button>
                 )}
-                {periodOpen && (
+                {periodOpen && (menuMode === "range" ? (
+                  <div className="ctl-menu ctl-range">
+                    <div className="ctl-range-row">
+                      <label>
+                        <span>Od</span>
+                        <input type="date" className="input" value={draft.from} max={draft.to || todayISO()}
+                          onChange={(e) => setDraft((d) => ({ ...d, from: e.target.value }))} />
+                      </label>
+                      <label>
+                        <span>Do</span>
+                        <input type="date" className="input" value={draft.to} min={draft.from || undefined} max={todayISO()}
+                          onChange={(e) => setDraft((d) => ({ ...d, to: e.target.value }))} />
+                      </label>
+                    </div>
+                    <div className="ctl-range-btns">
+                      <button className="btn btn-ghost" onClick={() => setMenuMode("list")}>Wróć</button>
+                      <button className="btn btn-primary" disabled={!draft.from || !draft.to || draft.from > draft.to}
+                        onClick={() => { setRange(draft); setPeriod("range"); setPeriodOpen(false); setMenuMode("list"); }}>
+                        Pokaż zakres
+                      </button>
+                    </div>
+                  </div>
+                ) : (
                   <div className="ctl-menu" role="listbox" aria-label="Okres danych auta">
                     {["all", ...monthOpts].map((m) => (
                       <button key={m} role="option" aria-selected={period === m} className={period === m ? "on" : ""}
@@ -3358,33 +3403,44 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                         {period === m && <Check size={15} />}
                       </button>
                     ))}
+                    <div className="ctl-menu-sep" />
+                    <button className={period === "range" ? "on" : ""}
+                      onClick={() => { setDraft(range.from ? range : { from: "", to: todayISO() }); setMenuMode("range"); }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <CalendarRange size={15} /> {period === "range" ? periodLabel("range") : "Zakres dat…"}
+                      </span>
+                      {period === "range" ? <Check size={15} /> : <ChevronRight size={15} />}
+                    </button>
                   </div>
-                )}
+                ))}
               </div>
             )}
-            <div>
-              <div ref={carRef} className="scroll-x car-carousel" onScroll={onCarScroll}>
-                {data.cars.map((c) => (
-                  <button key={c.id} className="card row-press" onClick={() => setActiveCar(c.id)}
-                    style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: "inherit", flex: isMobileF ? "0 0 calc(50% - 6px)" : "0 0 auto", minWidth: 0, border: `1.5px solid ${c.id === activeCar ? "var(--accent)" : "var(--line)"}`, background: c.id === activeCar ? "var(--accent-dim)" : "var(--surface)", color: "var(--text)" }}>
-                    <CarFront size={18} style={{ color: c.id === activeCar ? "var(--accent)" : "var(--muted)", flexShrink: 0 }} />
-                    <div style={{ textAlign: "left", minWidth: 0 }}>
-                      <div style={{ fontWeight: 800, fontSize: fit(c.name, 14, 11.5, 14), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
-                      <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, whiteSpace: "nowrap" }}>{c.fuel} · bak {c.tank} l</div>
-                    </div>
-                  </button>
-                ))}
-                <button className="car-add" aria-label="Dodaj samochód" disabled={addDisabled}
-                  onClick={() => { if (!addBlocked()) setCarForm({}); }}>
-                  <Plus size={20} />
+          </div>
+
+          {/* Wybór auta stoi osobno pod kartą sterowania — dotyczy wszystkiego,
+              co niżej, a nie samego filtrowania okresu. */}
+          <div>
+            <div ref={carRef} className="scroll-x car-carousel" onScroll={onCarScroll}>
+              {data.cars.map((c) => (
+                <button key={c.id} className="card row-press" onClick={() => setActiveCar(c.id)}
+                  style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: "inherit", flex: isMobileF ? "0 0 calc(50% - 6px)" : "0 0 auto", minWidth: 0, border: `1.5px solid ${c.id === activeCar ? "var(--accent)" : "var(--line)"}`, background: c.id === activeCar ? "var(--accent-dim)" : "var(--surface)", color: "var(--text)" }}>
+                  <CarFront size={18} style={{ color: c.id === activeCar ? "var(--accent)" : "var(--muted)", flexShrink: 0 }} />
+                  <div style={{ textAlign: "left", minWidth: 0 }}>
+                    <div style={{ fontWeight: 800, fontSize: fit(c.name, 14, 11.5, 14), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                    <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, whiteSpace: "nowrap" }}>{c.fuel} · bak {c.tank} l</div>
+                  </div>
                 </button>
-              </div>
-              {isMobileF && data.cars.length > 2 && (
-                <div className="dots" aria-hidden="true">
-                  {data.cars.map((c, i) => <span key={c.id} className={i === carPage ? "on" : ""} />)}
-                </div>
-              )}
+              ))}
+              <button className="car-add" aria-label="Dodaj samochód" disabled={addDisabled}
+                onClick={() => { if (!addBlocked()) setCarForm({}); }}>
+                <Plus size={20} />
+              </button>
             </div>
+            {isMobileF && data.cars.length > 2 && (
+              <div className="dots" aria-hidden="true">
+                {data.cars.map((c, i) => <span key={c.id} className={i === carPage ? "on" : ""} />)}
+              </div>
+            )}
           </div>
 
           {tab === "mech" ? (
@@ -3406,10 +3462,10 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
                   {stats.costPer100 != null && <StatCard icon={Percent} label="Koszt / 100 km" value={fmtMoney(stats.costPer100, main)} />}
                 </StatRail>
               ) : (
-                <EmptyState icon={Droplets} title={period === "all" ? "Brak tankowań" : "Brak tankowań w tym miesiącu"}
+                <EmptyState icon={Droplets} title={period === "all" ? "Brak tankowań" : "Brak tankowań w tym okresie"}
                   desc={period === "all"
                     ? `Dodaj pierwsze tankowanie dla auta ${car.name}, aby zobaczyć statystyki.`
-                    : `Auto ${car.name} nie ma tankowań w wybranym miesiącu. Wybierz „Cały okres", aby zobaczyć wszystkie.`}
+                    : `Auto ${car.name} nie ma tankowań w wybranym okresie. Wybierz „Cały okres", aby zobaczyć wszystkie.`}
                   action={period !== "all" ? <button className="btn btn-ghost" onClick={() => setPeriod("all")}>Pokaż cały okres</button> : undefined} />
               )}
 
