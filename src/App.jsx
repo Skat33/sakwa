@@ -1897,11 +1897,18 @@ async function aiDecrypt(blob, pass) {
   return new TextDecoder().decode(out);
 }
 
-/* Odszyfrowany klucz żyje tylko w pamięci karty — nie w localStorage i nie
-   w stanie aplikacji, więc nie trafi ani do bazy, ani do kopii zapasowej. */
+/* Klucz ma działać bez pytania o hasło, więc aplikacja musi umieć odczytać go
+   sama — szyfrujemy go wartością wyprowadzoną z id użytkownika. To UTRUDNIENIE,
+   nie zabezpieczenie: w tabeli i w zrzucie bazy nie leży gotowy klucz API, ale
+   ktoś z dostępem do konta odzyska go tak samo jak aplikacja. Prawdziwą barierą
+   jest tu wyłącznie hasło przy podglądzie klucza (patrz AiSettings). */
+const aiWrap = (plain, uid) => aiEncrypt(plain, `sakwa-ai:${uid}`);
+const aiUnwrap = (blob, uid) => aiDecrypt(blob, `sakwa-ai:${uid}`);
+
+/* Odszyfrowany klucz żyje tylko w pamięci karty — nie w localStorage. */
 let aiSession = null;
 const aiUnlockedCfg = () => aiSession;
-const aiLocked = (data) => !!data?.settings?.ai?.ct && !aiSession;
+const setAiSession = (s) => { aiSession = s; };
 const AI_PROVIDERS = {
   anthropic: {
     label: "Claude (Anthropic)",
@@ -2105,7 +2112,7 @@ function AiAnalysisCard({ data, txs, helpers, rangeLabel, update, go }) {
       ) : (
         <button className="btn btn-ghost" style={{ width: "100%" }} onClick={() => go?.("settings")}>
           <Sparkles size={15} style={{ color: "var(--violet)" }} />
-          {aiLocked(data) ? "Odblokuj analizę AI (hasło do klucza)" : "Włącz analizę AI (własny klucz)"}
+          "Włącz analizę AI (własny klucz)"
         </button>
       )}
     </div>
@@ -2541,7 +2548,7 @@ function ReportGenerator({ data, helpers, presetRange, update, toast, go }) {
         ) : (
           <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 14, fontSize: 13 }} onClick={() => go?.("settings")}>
             <Sparkles size={15} style={{ color: "var(--violet)" }} />
-            {aiLocked(data) ? "Wniosek AI — odblokuj klucz hasłem" : "Wniosek AI — wymaga własnego klucza"}
+            "Wniosek AI — wymaga własnego klucza"
           </button>
         )}
         {aiStatus === "loading" && (
@@ -3588,7 +3595,7 @@ function CarsStationsManager({ data, update, toast, confirm, back }) {
   );
 }
 
-function Settings_({ data, helpers, user, update, updateUser, go, toast, confirm, onLogout, onDeleteAccount, sub, setSub }) {
+function Settings_({ data, helpers, user, userId, aiStale, update, updateUser, go, toast, confirm, onLogout, onDeleteAccount, sub, setSub }) {
   const items = [
     { id: "categories", icon: LayoutGrid, label: "Kategorie", desc: "Własne kategorie, ikony i kolory" },
     { id: "recurring", icon: Repeat, label: "Płatności cykliczne", desc: "Wstrzymuj, wznawiaj i usuwaj" },
@@ -3598,7 +3605,7 @@ function Settings_({ data, helpers, user, update, updateUser, go, toast, confirm
     { id: "backup", icon: FileText, label: "Kopia zapasowa", desc: "Pobierz dane (JSON, CSV) lub wczytaj kopię" },
     { id: "ai", icon: Sparkles, label: "Analiza AI",
       desc: data.settings.ai?.ct
-        ? (aiSession ? `Aktywna · ${AI_PROVIDERS[data.settings.ai.provider]?.label}` : "Klucz zaszyfrowany — podaj hasło, by odblokować")
+        ? `Aktywna · ${AI_PROVIDERS[data.settings.ai.provider]?.label}`
         : "Wyłączona — dodaj własny klucz" },
     { id: "profile", icon: UserRound, label: "Profil", desc: user.name },
   ];
@@ -3611,7 +3618,7 @@ function Settings_({ data, helpers, user, update, updateUser, go, toast, confirm
   if (sub === "nav") return <NavManager data={data} update={update} toast={toast} back={() => setSub(null)} />;
   if (sub === "cars") return <CarsStationsManager data={data} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
   if (sub === "backup") return <BackupManager data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} back={() => setSub(null)} />;
-  if (sub === "ai") return <AiSettings data={data} update={update} toast={toast} back={() => setSub(null)} />;
+  if (sub === "ai") return <AiSettings data={data} update={update} user={user} userId={userId} aiStale={aiStale} toast={toast} back={() => setSub(null)} />;
 
   return (
     <div className="fade-in" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -3771,64 +3778,62 @@ function sanitizeImported(inc) {
   };
 }
 
-function AiSettings({ data, update, toast, back }) {
+function AiSettings({ data, update, user, userId, aiStale, toast, back }) {
   const stored = data.settings.ai || null;
+  const active = aiUnlockedCfg();
   const [provider, setProvider] = useState(stored?.provider || "gemini");
   const [model, setModel] = useState(stored?.model || "");
   const [key, setKey] = useState(legacyAiKey());   // migracja starego, jawnego klucza
-  const [pass, setPass] = useState("");
-  const [show, setShow] = useState(false);
   const [busy, setBusy] = useState(false);
   const [result, setResult] = useState(null);      // {ok, msg}
-  const [unlocked, setUnlocked] = useState(!!aiSession);
+  const [reveal, setReveal] = useState(null);      // null | "ask" | "shown"
+  const [pass, setPass] = useState("");
   const meta = AI_PROVIDERS[provider];
-  const hasStored = !!stored?.ct;
+  const hasKey = !!stored?.ct;
 
-  /* zapis: szyfrujemy klucz hasłem i odkładamy do dokumentu (czyli do bazy) */
   const saveKey = async () => {
     if (!key.trim()) return setResult({ ok: false, msg: "Najpierw wklej klucz API." });
-    if (pass.length < 6) return setResult({ ok: false, msg: "Hasło do klucza musi mieć co najmniej 6 znaków." });
     setBusy(true); setResult(null);
     try {
-      const blob = await aiEncrypt(key.trim(), pass);
+      const blob = await aiWrap(key.trim(), userId);
       const cfg = { ...blob, provider, model: model.trim() || meta.defaultModel };
       update((d) => ({ ...d, settings: { ...d.settings, ai: cfg } }));
-      aiSession = { provider: cfg.provider, model: cfg.model, key: key.trim() };
+      setAiSession({ provider: cfg.provider, model: cfg.model, key: key.trim() });
       dropLegacyAiKey();
-      setUnlocked(true); setKey(""); setPass("");
-      setResult({ ok: true, msg: "Zaszyfrowany klucz zapisany na koncie. Na innym urządzeniu podasz to samo hasło." });
+      setKey("");
+      setResult({ ok: true, msg: "Klucz zapisany na koncie — działa na każdym Twoim urządzeniu." });
       toast("Analiza AI włączona");
     } catch (e) {
-      setResult({ ok: false, msg: "Nie udało się zaszyfrować klucza: " + (e?.message || e) });
-    } finally { setBusy(false); }
-  };
-
-  /* odblokowanie: odszyfrowujemy do pamięci karty, nigdzie tego nie zapisując */
-  const unlock = async () => {
-    if (!pass) return setResult({ ok: false, msg: "Podaj hasło do klucza." });
-    setBusy(true); setResult(null);
-    try {
-      const plain = await aiDecrypt(stored, pass);
-      aiSession = { provider: stored.provider, model: stored.model, key: plain };
-      setUnlocked(true); setPass("");
-      setResult({ ok: true, msg: "Klucz odblokowany na czas tej sesji." });
-      toast("Klucz AI odblokowany");
-    } catch {
-      setResult({ ok: false, msg: "Nieprawidłowe hasło — klucza nie da się odszyfrować." });
+      setResult({ ok: false, msg: "Nie udało się zapisać klucza: " + (e?.message || e) });
     } finally { setBusy(false); }
   };
 
   const test = async () => {
     setBusy(true); setResult(null);
     try {
-      const txt = await askAi(aiSession, "Odpowiedz jednym słowem: OK", 200);
+      const txt = await askAi(active, "Odpowiedz jednym słowem: OK", 200);
       setResult({ ok: true, msg: "Połączenie działa. Model odpowiedział: " + txt.slice(0, 40) });
     } catch (e) { setResult({ ok: false, msg: aiErrorPl(e) }); } finally { setBusy(false); }
   };
 
+  /* Podgląd klucza za hasłem konta. Weryfikujemy je u Supabase, a nie lokalnie,
+     więc nie da się tego obejść podmianą czegokolwiek w przeglądarce. Chroni to
+     przed kimś, kto dorwał się do OTWARTEJ sesji — nie przed kimś, kto zna hasło. */
+  const doReveal = async () => {
+    if (!pass) return setResult({ ok: false, msg: "Podaj hasło do konta." });
+    setBusy(true); setResult(null);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: user.login, password: pass });
+      if (error) throw error;
+      setReveal("shown"); setPass(); setPass("");
+    } catch {
+      setResult({ ok: false, msg: "Nieprawidłowe hasło do konta." });
+    } finally { setBusy(false); }
+  };
+
   const forget = () => {
     update((d) => { const s = { ...d.settings }; delete s.ai; return { ...d, settings: s }; });
-    aiSession = null; setUnlocked(false); dropLegacyAiKey();
+    setAiSession(null); dropLegacyAiKey(); setReveal(null);
     setResult({ ok: true, msg: "Klucz usunięty z konta." });
     toast("Klucz AI usunięty");
   };
@@ -3841,94 +3846,107 @@ function AiSettings({ data, update, toast, back }) {
         dostawcy. Automatyczne wnioski w Analizach i Raportach liczą się bez tego, offline i za darmo.
       </p>
 
-      {hasStored && !unlocked ? (
-        <div className="card" style={{ padding: 16, marginBottom: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, fontWeight: 800, marginBottom: 4 }}>
-            <Lock size={17} style={{ color: "var(--accent)" }} /> Klucz zapisany i zaszyfrowany
+      {aiStale && (
+        <div className="card" style={{ padding: 14, marginBottom: 14, display: "flex", gap: 11, alignItems: "flex-start" }}>
+          <AlertTriangle size={18} style={{ color: "var(--warn)", flexShrink: 0, marginTop: 2 }} />
+          <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.55 }}>
+            Zapisany klucz pochodzi z wcześniejszej wersji (chronionej osobnym hasłem) i nie da się go już odczytać
+            automatycznie. Wklej klucz jeszcze raz — zapisze się w nowym formacie.
           </div>
-          <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5, marginBottom: 14 }}>
-            Dostawca: {AI_PROVIDERS[stored.provider]?.label || stored.provider} · model {stored.model}.
-            Podaj hasło, aby odblokować go na czas tej sesji.
-          </div>
-          <Field label="Hasło do klucza">
-            <input className="input" type="password" value={pass} autoComplete="off"
-              onChange={(e) => { setPass(e.target.value); setResult(null); }}
-              onKeyDown={(e) => { if (e.key === "Enter") unlock(); }} />
-          </Field>
-          {result && <ResultNote result={result} />}
-          <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn btn-primary" style={{ flex: 2 }} disabled={busy} onClick={unlock}>
-              {busy ? "Odszyfrowuję…" : "Odblokuj"}
-            </button>
-            <button className="btn btn-danger" style={{ flex: 1 }} onClick={forget}>Usuń</button>
-          </div>
-        </div>
-      ) : (
-        <div className="card" style={{ padding: 16, marginBottom: 14 }}>
-          {unlocked && (
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12.5, fontWeight: 700, color: "var(--accent)", marginBottom: 12 }}>
-              <Check size={15} /> Klucz aktywny w tej sesji
-            </div>
-          )}
-          <Field label="Dostawca">
-            <select className="select" value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); setResult(null); }}>
-              {Object.entries(AI_PROVIDERS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
-            </select>
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6, lineHeight: 1.5 }}>{meta.note}</div>
-          </Field>
-
-          <Field label={unlocked ? "Nowy klucz API (zostaw puste, by nie zmieniać)" : "Klucz API"}>
-            <div style={{ position: "relative" }}>
-              <input className="input" type={show ? "text" : "password"} value={key} placeholder={meta.keyHint}
-                autoComplete="off" spellCheck={false} style={{ paddingRight: 46 }}
-                onChange={(e) => { setKey(e.target.value); setResult(null); }} />
-              <button className="pass-eye" type="button" aria-label={show ? "Ukryj klucz" : "Pokaż klucz"} onClick={() => setShow((s) => !s)}>
-                {show ? <EyeOff size={17} /> : <Eye size={17} />}
-              </button>
-            </div>
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
-              Klucz wygenerujesz na <b style={{ color: "var(--text)" }}>{meta.keysUrl.replace("https://", "")}</b>
-            </div>
-          </Field>
-
-          <Field label="Hasło do klucza (min. 6 znaków)">
-            <input className="input" type="password" value={pass} autoComplete="new-password"
-              onChange={(e) => { setPass(e.target.value); setResult(null); }} />
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6, lineHeight: 1.5 }}>
-              Tym hasłem szyfrujemy klucz. Nie zapisujemy go nigdzie — jeśli je zapomnisz, trzeba będzie wpisać klucz od nowa.
-            </div>
-          </Field>
-
-          <Field label="Model">
-            <input className="input" value={model} placeholder={meta.defaultModel} autoComplete="off" spellCheck={false}
-              onChange={(e) => { setModel(e.target.value); setResult(null); }} />
-            <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
-              Puste = {meta.defaultModel}. Zmień, jeśli chcesz tańszy lub nowszy model.
-            </div>
-          </Field>
-
-          {result && <ResultNote result={result} />}
-          <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
-            {unlocked && <button className="btn btn-ghost" style={{ flex: 1 }} disabled={busy} onClick={test}>Testuj</button>}
-            <button className="btn btn-primary" style={{ flex: 2 }} disabled={busy} onClick={saveKey}>
-              {busy ? "Szyfruję…" : "Zaszyfruj i zapisz"}
-            </button>
-          </div>
-          {hasStored && (
-            <button className="btn btn-danger" style={{ width: "100%", marginTop: 10 }} onClick={forget}>
-              <Trash2 size={15} /> Usuń klucz z konta
-            </button>
-          )}
         </div>
       )}
+
+      {hasKey && !aiStale && (
+        <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 9, fontWeight: 800, marginBottom: 4 }}>
+            <Check size={17} style={{ color: "var(--accent)" }} /> Klucz aktywny
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.5, marginBottom: 14 }}>
+            {AI_PROVIDERS[stored.provider]?.label || stored.provider} · model {stored.model}
+          </div>
+
+          {reveal === "shown" && active ? (
+            <div style={{ marginBottom: 12 }}>
+              <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: "0.04em", color: "var(--muted)", marginBottom: 6 }}>TWÓJ KLUCZ</div>
+              <div className="card" style={{ padding: "11px 13px", background: "var(--surface2)", boxShadow: "none", wordBreak: "break-all",
+                fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: 12.5, fontWeight: 600 }}>
+                {active.key}
+              </div>
+              <button className="btn btn-ghost" style={{ width: "100%", marginTop: 8 }} onClick={() => setReveal(null)}>
+                <EyeOff size={15} /> Ukryj
+              </button>
+            </div>
+          ) : reveal === "ask" ? (
+            <div style={{ marginBottom: 12 }}>
+              <Field label="Hasło do konta">
+                <input className="input" type="password" value={pass} autoComplete="current-password"
+                  onChange={(e) => { setPass(e.target.value); setResult(null); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") doReveal(); }} />
+              </Field>
+              <div style={{ display: "flex", gap: 10 }}>
+                <button className="btn btn-ghost" style={{ flex: 1 }} onClick={() => { setReveal(null); setPass(""); setResult(null); }}>Anuluj</button>
+                <button className="btn btn-primary" style={{ flex: 2 }} disabled={busy} onClick={doReveal}>
+                  {busy ? "Sprawdzam…" : "Pokaż klucz"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button className="btn btn-ghost" style={{ width: "100%", marginBottom: 12 }} disabled={!active} onClick={() => { setReveal("ask"); setResult(null); }}>
+              <Eye size={15} /> Pokaż klucz (wymaga hasła)
+            </button>
+          )}
+
+          {result && <ResultNote result={result} />}
+          <div style={{ display: "flex", gap: 10 }}>
+            <button className="btn btn-ghost" style={{ flex: 1 }} disabled={busy || !active} onClick={test}>
+              {busy ? "…" : "Testuj"}
+            </button>
+            <button className="btn btn-danger" style={{ flex: 1 }} onClick={forget}>
+              <Trash2 size={15} /> Usuń
+            </button>
+          </div>
+        </div>
+      )}
+
+      <div className="card" style={{ padding: 16, marginBottom: 14 }}>
+        <div style={{ fontWeight: 800, fontSize: 14.5, marginBottom: 12 }}>{hasKey ? "Zmień klucz" : "Dodaj klucz"}</div>
+        <Field label="Dostawca">
+          <select className="select" value={provider} onChange={(e) => { setProvider(e.target.value); setModel(""); setResult(null); }}>
+            {Object.entries(AI_PROVIDERS).map(([id, p]) => <option key={id} value={id}>{p.label}</option>)}
+          </select>
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6, lineHeight: 1.5 }}>{meta.note}</div>
+        </Field>
+
+        <Field label="Klucz API">
+          <input className="input" type="password" value={key} placeholder={meta.keyHint}
+            autoComplete="off" spellCheck={false}
+            onChange={(e) => { setKey(e.target.value); setResult(null); }} />
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
+            Klucz wygenerujesz na <b style={{ color: "var(--text)" }}>{meta.keysUrl.replace("https://", "")}</b>
+          </div>
+        </Field>
+
+        <Field label="Model">
+          <input className="input" value={model} placeholder={meta.defaultModel} autoComplete="off" spellCheck={false}
+            onChange={(e) => { setModel(e.target.value); setResult(null); }} />
+          <div style={{ fontSize: 12, color: "var(--muted)", fontWeight: 600, marginTop: 6 }}>
+            Puste = {meta.defaultModel}. Zmień, jeśli chcesz tańszy lub nowszy model.
+          </div>
+        </Field>
+
+        {!hasKey && result && <ResultNote result={result} />}
+        <button className="btn btn-primary" style={{ width: "100%" }} disabled={busy} onClick={saveKey}>
+          {busy ? "Zapisuję…" : hasKey ? "Zapisz nowy klucz" : "Zapisz klucz"}
+        </button>
+      </div>
 
       <div className="card" style={{ padding: 14, display: "flex", gap: 11, alignItems: "flex-start" }}>
         <Lock size={18} style={{ color: "var(--accent)", flexShrink: 0, marginTop: 2 }} />
         <div style={{ fontSize: 12.5, color: "var(--muted)", fontWeight: 600, lineHeight: 1.55 }}>
-          Do bazy trafia <b style={{ color: "var(--text)" }}>wyłącznie szyfrogram</b> (AES-256-GCM, klucz wyprowadzony z Twojego
-          hasła przez PBKDF2). Bez tego hasła nie odczyta go ani aplikacja, ani nikt z wglądem w bazę czy w kopię zapasową —
-          hasła nigdzie nie zapisujemy. Odszyfrowany klucz żyje tylko w pamięci karty i znika po odświeżeniu strony.
-          Do dostawcy AI wysyłamy zbiorcze kwoty i nazwy kategorii, nigdy listy transakcji.
+          Klucz zapisuje się na Twoim koncie i działa od razu na każdym urządzeniu — <b style={{ color: "var(--text)" }}>podejrzenie
+          go wymaga hasła</b>, więc ktoś, kto dorwie się do otwartej sesji, nie przepisze go sobie. Nie chroni to jednak przed kimś,
+          kto zna Twoje hasło. W bazie klucz nie leży w postaci jawnej, ale to utrudnienie, nie szyfr — aplikacja odczytuje go sama.
+          Do pobieranej kopii zapasowej klucz nie trafia. Do dostawcy AI wysyłamy zbiorcze kwoty i nazwy kategorii, nigdy listy transakcji.
         </div>
       </div>
     </div>
@@ -3951,7 +3969,11 @@ function BackupManager({ data, helpers, update, toast, confirm, back }) {
   const stamp = todayISO();
 
   const exportJson = () => {
-    downloadBlob(JSON.stringify({ app: "sakwa", version: 1, exportedAt: new Date().toISOString(), data }, null, 2),
+    /* klucz AI wycinamy z kopii — plik bywa wysyłany dalej, a to poświadczenie
+       do płatnego API; po wczytaniu kopii wpisuje się go po prostu ponownie */
+    const { ai, ...settings } = data.settings || {};
+    const clean = { ...data, settings };
+    downloadBlob(JSON.stringify({ app: "sakwa", version: 1, exportedAt: new Date().toISOString(), data: clean }, null, 2),
       `sakwa-kopia-${stamp}.json`, "application/json");
     toast("Kopia zapasowa pobrana");
   };
@@ -5360,6 +5382,22 @@ export default function App() {
 
   const update = useCallback((fn) => setData((d) => fn(d)), []);
 
+  /* Klucz AI: po wczytaniu danych odszyfrowujemy go do pamięci, żeby analizy
+     działały bez pytania o cokolwiek. Wpis w starym formacie (v1, szyfrowany
+     hasłem użytkownika) zostawiamy nietknięty — ekran ustawień poprosi o
+     ponowne wpisanie klucza. */
+  const [aiStale, setAiStale] = useState(false);
+  useEffect(() => {
+    const blob = data?.settings?.ai;
+    if (!blob?.ct || !userId) { setAiSession(null); setAiStale(false); return; }
+    if (aiSession) return;
+    let alive = true;
+    aiUnwrap(blob, userId)
+      .then((plain) => { if (alive) { setAiSession({ provider: blob.provider, model: blob.model, key: plain }); setAiStale(false); } })
+      .catch(() => { if (alive) setAiStale(true); }); // v1 albo uszkodzony wpis
+    return () => { alive = false; };
+  }, [data?.settings?.ai, userId]);
+
   /* Sam brak połączenia NIE blokuje już dodawania — zmiany lądują na urządzeniu
      (offlineWrite) i synchronizują się same. Blokujemy tylko dwa przypadki,
      w których nowy wpis naprawdę przepadnie:
@@ -5569,7 +5607,7 @@ export default function App() {
       case "budgets": return <Budgets data={data} helpers={helpers} update={update} toast={toast} confirm={confirm} />;
       case "summary": return <Summary data={data} helpers={helpers} />;
       case "more": return <More go={go} data={data} />;
-      case "settings": return <Settings_ data={data} helpers={helpers} user={user} update={update} updateUser={updateUser} go={go} toast={toast} confirm={confirm} onLogout={logout} onDeleteAccount={deleteAccount} sub={settingsSub} setSub={setSettingsSub} />;
+      case "settings": return <Settings_ data={data} helpers={helpers} user={user} userId={userId} aiStale={aiStale} update={update} updateUser={updateUser} go={go} toast={toast} confirm={confirm} onLogout={logout} onDeleteAccount={deleteAccount} sub={settingsSub} setSub={setSettingsSub} />;
       default: return null;
     }
   })();
