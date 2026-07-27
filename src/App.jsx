@@ -458,19 +458,20 @@ input[type="date"]::-webkit-calendar-picker-indicator { opacity: .55; }
 input[type="date"] { -webkit-appearance: none; appearance: none; display: block; width: 100%; min-width: 0; min-height: 46px; text-align: left; }
 input[type="date"]::-webkit-date-and-time-value { text-align: left; }
 .toast {
-  /* Na mobile siedzi tuż nad dolną krawędzią, a nie w połowie ekranu: zamiast
-     wisieć NAD FAB-em, mija go z lewej (left/right zamiast wyśrodkowania),
-     dzięki czemu może zejść nisko i nie zasłania treści. */
+  /* Nisko przy krawędzi i WYŚRODKOWANE. Żeby nie kolidowało z FAB-em, to FAB
+     ustępuje miejsca (patrz .fin-root[data-toast="1"] .fab) — tak jak robi to
+     Material Design; przesuwanie toastu w bok wyglądało na przypadkowe. */
+  /* left/right + margin auto zamiast left:50% + translate: przy left:50%
+     dostępna szerokość to tylko połowa ekranu, więc tekst łamał się dużo
+     wcześniej, niż pozwalał max-width. */
   position: fixed; bottom: calc(16px + max(env(safe-area-inset-bottom), 10px));
-  left: 16px; right: 88px; transform: none;
+  left: 12px; right: 12px; margin: 0 auto; width: fit-content;
   background: var(--surface3); color: var(--text); border: 1px solid var(--line);
   padding: 12px 16px; border-radius: 14px; z-index: 990; display: flex; align-items: center; gap: 14px;
   box-shadow: var(--shadow); animation: fadeIn .22s ease both; font-size: 14px; font-weight: 600;
+  max-width: min(92vw, 420px);
 }
-@media (min-width: 1024px) {
-  /* na desktopie FAB jest w prawym dolnym rogu, więc wracamy do wyśrodkowania */
-  .toast { bottom: 28px; left: 50%; right: auto; transform: translateX(-50%); max-width: min(92vw, 420px); }
-}
+@media (min-width: 1024px) { .toast { bottom: 28px; } }
 .toast button { background: none; border: none; color: var(--accent); font-weight: 800; cursor: pointer; font-family: inherit; font-size: 14px; }
 @media (max-width: 1023px) {
   /* dokument przewija się sam => Safari zwija pasek adresu, treść płynie pod nim.
@@ -795,7 +796,13 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   width: 58px; height: 58px; border-radius: 50%; border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   background: transparent; color: var(--on-accent); box-shadow: none;
-  transition: transform .15s ease, opacity .2s ease, display .2s allow-discrete;
+  transition: transform .22s cubic-bezier(.22,.9,.3,1), opacity .2s ease, display .2s allow-discrete;
+}
+/* Widoczne powiadomienie => FAB unosi się dokładnie ponad nie (wysokość mierzy
+   JS do --toast-h, bo długi komunikat łamie się na kilka linii). Dotyczy tylko
+   wąskich ekranów — na desktopie toast i tak nie sięga FAB-a. */
+@media (max-width: 1023px) {
+  .fin-root[data-toast="1"] .fab { transform: translateY(calc(-1 * (var(--toast-h, 52px) + 26px))); }
 }
 /* mobile, scroll w dół (= zwinięta pigułka iOS 26): pływające przyciski MUSZĄ
    zniknąć z render tree (display:none), inaczej Safari dokłada pod pigułkę
@@ -5329,6 +5336,11 @@ export default function App() {
   const [txForm, setTxForm] = useState(null);       // null | {} | tx
   const [openRefuel, setOpenRefuel] = useState(false);
   const [toastState, setToastState] = useState(null); // {msg, action, onAction}
+  /* FAB podnosi się dokładnie o wysokość powiadomienia — długi komunikat łamie
+     się na kilka linii, więc stała wartość raz wystarczała, a raz nie. */
+  const measureToast = useCallback((el) => {
+    document.documentElement.style.setProperty("--toast-h", el ? `${el.offsetHeight}px` : "0px");
+  }, []);
   const [navHidden, setNavHidden] = useState(false);
   const [conf, setConf] = useState(null);
   const toastTimer = useRef(null);
@@ -6011,7 +6023,8 @@ export default function App() {
   })();
 
   return (
-    <div className={`fin-root ${data.settings.hideBalance ? "incognito" : ""}`} data-theme={theme} data-nav-hidden={navHidden && !isDesktop ? "1" : "0"}>
+    <div className={`fin-root ${data.settings.hideBalance ? "incognito" : ""}`} data-theme={theme}
+      data-nav-hidden={navHidden && !isDesktop ? "1" : "0"} data-toast={toastState ? "1" : "0"}>
       <style>{CSS}</style>
       <div className="app-scroll">
       <div style={{ display: "flex" }}>
@@ -6289,7 +6302,7 @@ export default function App() {
       <Confirm conf={conf} onDone={confirmDone} />
 
       {toastState && (
-        <div className="toast no-print" role="status">
+        <div className="toast no-print" role="status" ref={measureToast}>
           <span>{toastState.msg}</span>
           {toastState.action && (
             <button onClick={() => { toastState.onAction?.(); setToastState(null); }}>{toastState.action}</button>
