@@ -882,45 +882,62 @@ h1.page-title::after { content: ""; display: block; width: 28px; height: 3px; ma
   padding: 10px; box-shadow: var(--shadow); display: flex; flex-direction: column; gap: 10px;
 }
 .ctl-card .seg { margin: 0; }
+/* karuzela aut siedzi w karcie sterowania - kasujemy jej wlasne oddechy,
+   zeby nie robila w srodku podwojnego marginesu */
+.ctl-card .car-carousel { padding: 2px 0 4px; }
+.ctl-card .dots { margin-top: 6px; }
+.ctl-card-sep { height: 1px; background: var(--line); margin: 0 -10px; }
 /* Ikonki przy wierszu mają sens na dużym ekranie. Na telefonie zjadały szerokość
    tekstowi (szczegóły tankowania łamały się na cztery linie), a i tak wszystko
    robi dotknięcie wiersza — usuwanie przeniesione do arkusza edycji. */
 .row-act { display: none; }
 @media (min-width: 768px) { .row-act { display: inline-flex; } }
+/* Natywnego <select> nie da się ostylować — rozwinięta lista zostawała
+   systemowa (ostra ramka, obcy font) i odstawała od reszty. Rysujemy więc
+   własne menu: przycisk + lista pozycji pod nim. */
 .ctl-period {
-  display: flex; align-items: center; gap: 9px;
-  padding: 8px 10px; border-radius: 13px;
-  background: var(--surface2); border: 1px solid transparent;
+  position: relative; display: flex; align-items: center;
+  border-radius: 13px; background: var(--surface2); border: 1px solid transparent;
   transition: background .18s ease, border-color .18s ease;
+}
+.ctl-period-btn {
+  flex: 1; min-width: 0; display: flex; align-items: center; gap: 9px;
+  padding: 9px 11px; background: none; border: none; border-radius: 13px;
+  font-family: inherit; cursor: pointer; text-align: left; color: var(--text);
 }
 .ctl-period-ic { color: var(--muted); flex-shrink: 0; transition: color .18s ease; }
 .ctl-period-lbl { font-size: 12.5px; font-weight: 800; color: var(--muted); flex-shrink: 0; transition: color .18s ease; }
+.ctl-period-val {
+  flex: 1; min-width: 0; text-align: right; font-size: 15px; font-weight: 800; color: var(--text);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.ctl-period-chev { color: var(--muted); flex-shrink: 0; transition: transform .18s ease, color .18s ease; }
 /* wybrany konkretny miesiąc => całość podbita akcentem, żeby filtr rzucał się w oczy */
 .ctl-period.on { background: var(--accent-dim); border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
-.ctl-period.on .ctl-period-ic, .ctl-period.on .ctl-period-lbl { color: var(--accent); }
-.ctl-period-pick { position: relative; flex: 1; min-width: 0; display: flex; align-items: center; justify-content: flex-end; gap: 6px; }
-.ctl-period-pick select {
-  appearance: none; -webkit-appearance: none; background: transparent; border: none; outline: none;
-  font-family: inherit; font-size: 15px; font-weight: 800; color: var(--text);
-  text-align: right; padding: 4px 0; cursor: pointer; max-width: 100%;
-}
-.ctl-period-pick select:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 8px; }
-/* Rozwiniętą listę rysuje system i dziedziczy ona kolory z selecta — przy
-   przezroczystym tle wychodził jasny tekst na jasnym menu (nieczytelne).
-   Kolory ustawiamy więc wprost na opcjach. */
-.ctl-period-pick option {
-  background: var(--surface); color: var(--text);
-  font-family: inherit; font-size: 14px; font-weight: 700;
-}
-.ctl-period.on .ctl-period-pick select { color: var(--accent); }
-.ctl-period-pick svg { color: var(--muted); flex-shrink: 0; pointer-events: none; }
-.ctl-period.on .ctl-period-pick svg { color: var(--accent); }
+.ctl-period.on .ctl-period-ic, .ctl-period.on .ctl-period-lbl,
+.ctl-period.on .ctl-period-val, .ctl-period.on .ctl-period-chev { color: var(--accent); }
+.ctl-period.open .ctl-period-chev { transform: rotate(180deg); }
 .ctl-period-clear {
-  flex-shrink: 0; width: 26px; height: 26px; border-radius: 9px; border: none; cursor: pointer;
+  flex-shrink: 0; width: 26px; height: 26px; margin-right: 9px; border-radius: 9px; border: none; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--accent) 20%, transparent); color: var(--accent);
 }
 .ctl-period-clear:active { transform: scale(.92); }
+.ctl-menu {
+  position: absolute; z-index: 40; top: calc(100% + 7px); left: -2px; right: -2px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 15px;
+  box-shadow: var(--shadow); padding: 6px; max-height: 262px; overflow-y: auto;
+  animation: menuIn .15s ease;
+}
+@keyframes menuIn { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.ctl-menu button {
+  width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 10px 12px; border-radius: 11px; border: none; background: none; cursor: pointer;
+  font-family: inherit; font-size: 14px; font-weight: 700; color: var(--text); text-align: left;
+}
+.ctl-menu button + button { margin-top: 2px; }
+.ctl-menu button:hover { background: var(--surface2); }
+.ctl-menu button.on { background: var(--accent-dim); color: var(--accent); }
 
 .db-banner {
   position: sticky; top: 0; z-index: 70; margin: 0 0 14px;
@@ -3177,7 +3194,19 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
   const [period, setPeriod] = useState("all");
   const [tab, setTab] = useState("fuel"); // "fuel" | "mech"
   const [editRefuel, setEditRefuel] = useState(null);
-  const [svcForm, setSvcForm] = useState(null);   // wpis serwisowy, otwierany też z nagłówka
+  const [svcForm, setSvcForm] = useState(null);
+  const [periodOpen, setPeriodOpen] = useState(false);
+  const periodRef = useRef(null);
+  const periodLabel = (m) => (m === "all" ? "Cały okres" : `${MONTHS_FULL[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}`);
+  /* menu zamyka klik obok i Esc — inaczej zostawałoby otwarte po wyjściu myszą */
+  useEffect(() => {
+    if (!periodOpen) return;
+    const away = (e) => { if (!periodRef.current?.contains(e.target)) setPeriodOpen(false); };
+    const esc = (e) => { if (e.key === "Escape") setPeriodOpen(false); };
+    document.addEventListener("mousedown", away);
+    document.addEventListener("keydown", esc);
+    return () => { document.removeEventListener("mousedown", away); document.removeEventListener("keydown", esc); };
+  }, [periodOpen]);   // wpis serwisowy, otwierany też z nagłówka
   const [allRefuelsOpen, setAllRefuelsOpen] = useState(false);
   const [allStationsOpen, setAllStationsOpen] = useState(false);
   const isMobileF = useMedia("(max-width: 767px)");
@@ -3295,33 +3324,8 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
           action={<button className="btn btn-primary" onClick={() => setCarForm({})}><Plus size={16} /> Dodaj samochód</button>} />
       ) : (
         <>
-          <div>
-            <div ref={carRef} className="scroll-x car-carousel" onScroll={onCarScroll}>
-              {data.cars.map((c) => (
-                <button key={c.id} className="card row-press" onClick={() => setActiveCar(c.id)}
-                  style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: "inherit", flex: isMobileF ? "0 0 calc(50% - 6px)" : "0 0 auto", minWidth: 0, border: `1.5px solid ${c.id === activeCar ? "var(--accent)" : "var(--line)"}`, background: c.id === activeCar ? "var(--accent-dim)" : "var(--surface)", color: "var(--text)" }}>
-                  <CarFront size={18} style={{ color: c.id === activeCar ? "var(--accent)" : "var(--muted)", flexShrink: 0 }} />
-                  <div style={{ textAlign: "left", minWidth: 0 }}>
-                    <div style={{ fontWeight: 800, fontSize: fit(c.name, 14, 11.5, 14), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
-                    <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, whiteSpace: "nowrap" }}>{c.fuel} · bak {c.tank} l</div>
-                  </div>
-                </button>
-              ))}
-              <button className="car-add" aria-label="Dodaj samochód" disabled={addDisabled}
-                onClick={() => { if (!addBlocked()) setCarForm({}); }}>
-                <Plus size={20} />
-              </button>
-            </div>
-            {isMobileF && data.cars.length > 2 && (
-              <div className="dots" aria-hidden="true">
-                {data.cars.map((c, i) => <span key={c.id} className={i === carPage ? "on" : ""} />)}
-              </div>
-            )}
-          </div>
-
-          {/* Jedna karta sterowania: najpierw CO oglądamy (paliwo / mechanika),
-              pod spodem ZA JAKI okres — wcześniej okres wisiał osobno nad
-              karuzelą aut i wyglądał jak element niezwiązany z resztą. */}
+          {/* Jedna karta sterowania, od ogółu do szczegółu: CO oglądamy
+              (paliwo / mechanika), ZA JAKI okres, a na końcu KTÓRE auto. */}
           <div className="ctl-card">
             <div className="seg">
               <button className={tab === "fuel" ? "on" : ""} onClick={() => setTab("fuel")}>
@@ -3332,25 +3336,55 @@ function Fuel_({ data, helpers, update, toast, confirm, openRefuel, setOpenRefue
               </button>
             </div>
             {monthOpts.length > 0 && (
-              <div className={`ctl-period ${period !== "all" ? "on" : ""}`}>
-                <CalendarDays size={15} className="ctl-period-ic" />
-                <span className="ctl-period-lbl">Okres</span>
-                <div className="ctl-period-pick">
-                  <select value={period} onChange={(e) => setPeriod(e.target.value)} aria-label="Okres danych auta">
-                    <option value="all">Cały okres</option>
-                    {monthOpts.map((m) => (
-                      <option key={m} value={m}>{MONTHS_FULL[Number(m.slice(5, 7)) - 1]} {m.slice(0, 4)}</option>
-                    ))}
-                  </select>
-                  <ChevronDown size={15} aria-hidden="true" />
-                </div>
+              <div className={`ctl-period ${period !== "all" ? "on" : ""} ${periodOpen ? "open" : ""}`} ref={periodRef}>
+                <button className="ctl-period-btn" aria-haspopup="listbox" aria-expanded={periodOpen}
+                  onClick={() => setPeriodOpen((o) => !o)}>
+                  <CalendarDays size={15} className="ctl-period-ic" />
+                  <span className="ctl-period-lbl">Okres</span>
+                  <span className="ctl-period-val">{periodLabel(period)}</span>
+                  <ChevronDown size={15} className="ctl-period-chev" aria-hidden="true" />
+                </button>
                 {period !== "all" && (
                   <button className="ctl-period-clear" aria-label="Pokaż cały okres" onClick={() => setPeriod("all")}>
                     <X size={14} />
                   </button>
                 )}
+                {periodOpen && (
+                  <div className="ctl-menu" role="listbox" aria-label="Okres danych auta">
+                    {["all", ...monthOpts].map((m) => (
+                      <button key={m} role="option" aria-selected={period === m} className={period === m ? "on" : ""}
+                        onClick={() => { setPeriod(m); setPeriodOpen(false); }}>
+                        {periodLabel(m)}
+                        {period === m && <Check size={15} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
               </div>
             )}
+            <div>
+              <div ref={carRef} className="scroll-x car-carousel" onScroll={onCarScroll}>
+                {data.cars.map((c) => (
+                  <button key={c.id} className="card row-press" onClick={() => setActiveCar(c.id)}
+                    style={{ padding: "12px 14px", display: "flex", alignItems: "center", gap: 10, cursor: "pointer", fontFamily: "inherit", flex: isMobileF ? "0 0 calc(50% - 6px)" : "0 0 auto", minWidth: 0, border: `1.5px solid ${c.id === activeCar ? "var(--accent)" : "var(--line)"}`, background: c.id === activeCar ? "var(--accent-dim)" : "var(--surface)", color: "var(--text)" }}>
+                    <CarFront size={18} style={{ color: c.id === activeCar ? "var(--accent)" : "var(--muted)", flexShrink: 0 }} />
+                    <div style={{ textAlign: "left", minWidth: 0 }}>
+                      <div style={{ fontWeight: 800, fontSize: fit(c.name, 14, 11.5, 14), whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{c.name}</div>
+                      <div style={{ fontSize: 11.5, color: "var(--muted)", fontWeight: 700, whiteSpace: "nowrap" }}>{c.fuel} · bak {c.tank} l</div>
+                    </div>
+                  </button>
+                ))}
+                <button className="car-add" aria-label="Dodaj samochód" disabled={addDisabled}
+                  onClick={() => { if (!addBlocked()) setCarForm({}); }}>
+                  <Plus size={20} />
+                </button>
+              </div>
+              {isMobileF && data.cars.length > 2 && (
+                <div className="dots" aria-hidden="true">
+                  {data.cars.map((c, i) => <span key={c.id} className={i === carPage ? "on" : ""} />)}
+                </div>
+              )}
+            </div>
           </div>
 
           {tab === "mech" ? (
